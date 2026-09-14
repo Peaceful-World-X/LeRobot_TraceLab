@@ -1,6 +1,36 @@
-# LeRobot Trajectory Studio
+<div align="center">
+  <img src="assets/h01-tracelab-avatar-robot-transparent.png" width="130" alt="LeRobot TraceLab">
+  <h1>LeRobot Trajectory Studio</h1>
+  <p><strong>LeRobot 轨迹工作台</strong> · 轨迹、视频与速度同步查看。</p>
+  <p>
+    <a href="https://peaceful-world-x.github.io/LeRobot_TraceLab/"><strong>在线查看器</strong></a> ·
+    <a href="https://github.com/Peaceful-World-X/LeRobot_TraceLab"><strong>项目仓库</strong></a> ·
+    <a href="public/README.md"><strong>使用说明</strong></a>
+  </p>
+  <p>
+    <a href="https://github.com/Peaceful-World-X/LeRobot_TraceLab/stargazers"><img src="https://img.shields.io/github/stars/Peaceful-World-X/LeRobot_TraceLab?style=flat-square&color=D97757" alt="GitHub stars"></a>
+    <a href="https://github.com/Peaceful-World-X/LeRobot_TraceLab/issues"><img src="https://img.shields.io/github/issues/Peaceful-World-X/LeRobot_TraceLab?style=flat-square&color=8C6A5D" alt="GitHub issues"></a>
+  </p>
+</div>
 
-LeRobot 轨迹工作台：面向通用 LeRobot v2.1 数据集的轨迹、视频和速度同步查看器。
+支持 LeRobot v2.1 中等长位姿向量与独立 MP4 的同步查看，内置 H01、EBench、Robocasa365 类别及自定义字段映射。
+
+- **浏览器导入：** 选择数据集目录并指定 Episode，自动匹配视频和 FPS；也可通过弹窗分别选择 parquet 和 MP4。
+- **同步查看：** 完整轨迹、逐帧点、播放进度高亮、速度曲线、倍速与点选跳转。
+- **服务器模式：** 使用 Python 服务读取服务器数据；公开版在浏览器本地处理选中的文件。
+
+## 页面预览
+
+<p align="center"><img src="assets/demo.png" width="96%" alt="LeRobot TraceLab 轨迹、视频与速度同步查看演示"></p>
+<p align="center"><sub>左侧查看空间轨迹，右侧对照视频和速度，按同一帧同步播放。</sub></p>
+
+<details>
+<summary>数据重构时长对比</summary>
+
+<p align="center"><img src="assets/duration_comparison.png" width="96%" alt="原始与重构数据集时长对比"></p>
+<p align="center"><img src="assets/duration_reconstructed.png" width="96%" alt="重构后的逐 episode 时长"></p>
+
+</details>
 
 ## 轨迹查看
 
@@ -9,14 +39,12 @@ pip install fastapi 'pydantic>=2' uvicorn pyarrow numpy scipy plotly pyyaml
 
 cd $WORKDIR/H01_TraceLab
 python ee_video_viewer.py
-
-codex resume 01a08f4e-dd27-7181-8839-636c70012d15
 ```
 - 打开 http://localhost:9090，选择类别，输入服务器上的数据集总目录，再填写 episode 数字并加载。
 - 不同数据集类别信息, 左右臂本体定义，显示坐标方向，记录在 ee_video_viewer.yaml
 - 速度平均数和中位数只统计速度大于 0 的有效帧。
 
-# 数据集重构
+## 数据集重构
 
 ```bash
 

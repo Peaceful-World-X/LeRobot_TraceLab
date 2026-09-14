@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>LeRobot 轨迹工作台</title>
+    <link rel="icon" type="image/png" href="assets/h01-tracelab-avatar-robot-transparent.png">
+    <link rel="apple-touch-icon" href="assets/h01-tracelab-avatar-robot-transparent.png">
+    <script src="assets/plotly.min.js" defer></script>
+    <link rel="stylesheet" href="assets/viewer.css">
+    <script src="assets/viewer-core.js" defer></script>
+    <style>
+        /* 控件采用包含边框的尺寸，避免文件框和弹窗输入撑出布局。 */
+        .public-header, .public-header *, .manual-import-dialog, .manual-import-dialog * { box-sizing: border-box; }
+        .public-header { min-height: 68px; padding: 12px 16px; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .public-header > div { flex: none; font-size: 16px; white-space: nowrap; margin-right: 8px; }
+        .public-subtitle:empty { display: none; }
+        .public-header label { display: inline-flex; align-items: center; gap: 8px; margin: 0; height: 38px; white-space: nowrap; }
+        .public-header select, .public-header input, .public-header button { height: 38px; min-width: 0; font: inherit; border-radius: 6px; }
+        #profile-input { width: 140px; padding: 0 24px 0 10px; }
+        .public-header .directory-label { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
+        .directory-label span { font-size: 13px; }
+        #directory-input { display: flex; align-items: center; gap: 8px; width: 0; min-width: 0; padding: 0 10px; flex: 1 1 0; border: 1px solid #9b8b7e; background: #fffaf5; color: #514238; text-align: left; }
+        #directory-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        input[type=file]::file-selector-button { height: 28px; padding: 0 10px; margin-right: 8px; border: 0; border-radius: 4px; background: #eee3d9; color: #514238; font: inherit; cursor: pointer; }
+        .public-header .episode-label { font-size: 13px; }
+        #episode-input { width: 72px; flex: none; padding: 0 10px; }
+        .manual-import-button { padding: 0 12px; border: 1px solid #8f7e71; background: transparent; white-space: nowrap; }
+        .manual-import-button:hover { background: #45403b; }
+        #load-button { padding: 0 16px; white-space: nowrap; }
+        #status { flex: 0 1 auto; max-width: 180px; min-width: 0; padding: 4px 8px; border-radius: 5px; background: #ffffff0d; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #status:empty { display: none; }
+        .public-header .repo-link { display: inline-flex; align-items: center; gap: 7px; flex: 0 1 auto; min-width: 0; max-width: 290px; height: 32px; margin-left: auto; padding: 0 11px 0 9px; border: 1px solid #e7b09b; border-radius: 999px; background: #f8ece7; color: #5f554d; font-size: 12px; white-space: nowrap; text-decoration: none; transition: background .15s, border-color .15s; }
+        .project-links { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+        .public-header .project-links { margin-right: 0; }
+        .project-links .visitor-count { display: inline-flex; align-items: center; min-height: 32px; font-size: 11px; color: #cdb8a9; }
+        .visitor-count img { display: block; height: 20px; max-width: 140px; }
+        .repo-link svg { width: 18px; height: 18px; flex: none; fill: #d97757; }
+        .repo-link span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+        .public-header .repo-link:hover { background: #f2d8cb; border-color: #d97757; }
+        .public-header .repo-link:focus-visible { outline: 2px solid #d97757; outline-offset: 3px; }
+        .manual-import-dialog { width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); overflow: auto; padding: 0; border: 1px solid #d2bbaa; border-radius: 12px; background: #fffaf5; color: #262421; box-shadow: 0 18px 70px #0006; }
+        .manual-import-dialog::backdrop { background: #17141188; }
+        .manual-import-dialog form { padding: 24px; }
+        .manual-import-dialog h2 { margin: 0 0 6px; font-size: 20px; }
+        .manual-import-dialog p { margin: 0 0 20px; color: #6d625b; font-size: 12px; line-height: 1.6; }
+        .manual-import-dialog label { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; margin: 12px 0; color: #4c433d; }
+        .manual-import-dialog input { min-width: 0; width: 100%; height: 40px; padding: 0 10px; font: inherit; }
+        .manual-import-dialog input[type=file] { padding: 5px; }
+        .manual-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+        .manual-dialog-actions button { height: 38px; padding: 0 14px; font: inherit; }
+        .manual-dialog-actions button:first-child { border: 1px solid #d2bbaa; color: #625247; background: transparent; }
+        .profile-dialog { width: min(620px, calc(100vw - 32px)); }
+        .profile-dialog .config-grid { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px; }
+        .profile-dialog .config-grid label { display: block; margin: 0; }
+        @media (max-width: 600px) {
+            .public-header { gap: 10px; }
+            .public-header .directory-label { width: 100%; flex-basis: 100%; }
+            #directory-input { flex: 1; width: 0; }
+            .manual-import-dialog form { padding: 20px; }
+            .manual-import-dialog label, .profile-dialog .config-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="public-header">
+        <div><b>LeRobot TraceLab</b><span class="public-subtitle"></span></div>
+        <label class="profile-label">类别 <select id="profile-input" aria-label="机器人类别"><option value="H01">H01</option><option value="Ebench">EBench</option><option value="Robocasa365">Robocasa365</option><option value="__custom__">自定义</option></select></label>
+        <div class="directory-label"><span>数据集目录</span><button id="directory-input" type="button" title="按需读取指定 Episode"><span id="directory-name">选择目录</span></button></div>
+        <button id="manual-import-button" class="manual-import-button" type="button">▸ 单独导入 parquet + 视频</button>
+        <label class="episode-label" for="episode-input">Episode <input id="episode-input" type="number" min="0" step="1" value="0" aria-label="Episode 序号"></label>
+        <button id="load-button" type="button">加载</button>
+        <span id="status" role="status" aria-live="polite"></span>
+        <div class="project-links" aria-label="项目链接与访问量">
+        <a class="repo-link" href="https://github.com/Peaceful-World-X/LeRobot_TraceLab" target="_blank" rel="noopener noreferrer" title="Peaceful-World-X / LeRobot_TraceLab" aria-label="在 GitHub 打开 Peaceful-World-X / LeRobot_TraceLab">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.23c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18a4.64 4.64 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22v3.3c0 .32.22.7.82.58A12 12 0 0 0 12 .3Z"/></svg>
+            <span>Peaceful-World-X / LeRobot_TraceLab</span>
+        </a>
+        <span class="visitor-count" title="页面访问计数，由第三方徽章服务提供，并非独立访客人数">
+            <img src="https://visitor-badge.laobi.icu/badge?page_id=Peaceful-World-X.LeRobot_TraceLab.web&amp;left_text=visits&amp;left_color=%236B5B52&amp;right_color=%23D97757" alt="访问量暂不可用" referrerpolicy="no-referrer" onerror="this.hidden=true; this.parentElement.textContent='访问量暂不可用'">
+        </span>
+        </div>
+    </header>
+    <dialog id="manual-import-dialog" class="manual-import-dialog">
+        <form method="dialog">
+            <h2>单独导入文件</h2>
+            <p>选择同一 episode 的 parquet 和对应视频；文件只在浏览器本地处理。</p>
+            <label>Parquet <input id="parquet-input" type="file" accept=".parquet,application/octet-stream"></label>
+            <label>视频 MP4 <input id="video-input" type="file" accept="video/mp4,.mp4"></label>
+            <label>来源映射（可选）<input id="mapping-input" type="file" accept=".csv"></label>
+            <label>FPS <input id="fps-input" type="number" min="1" max="240" step="0.01" value="30" title="目录模式会自动从 meta/info.json 读取"></label>
+            <div class="manual-dialog-actions"><button type="button" onclick="document.getElementById('manual-import-dialog').close()">取消</button><button id="manual-confirm-button" type="button">使用这些文件</button></div>
+        </form>
+    </dialog>
+    <dialog id="profile-dialog" class="manual-import-dialog profile-dialog">
+        <form method="dialog">
+            <h2>自定义类别</h2>
+            <p>填写 parquet 位置字段、左右 XYZ 索引和方向系数；配置只保存在当前浏览器。</p>
+            <div class="config-grid">
+                <label for="custom-video-key">视频键</label><input id="custom-video-key" placeholder="observation.images.cam_fisheye_front">
+                <label for="custom-arms-key">位置字段</label><input id="custom-arms-key" placeholder="observation.state_endpose_quat">
+                <label for="custom-indices">左右 XYZ 索引</label><input id="custom-indices" placeholder="0,1,2,8,9,10">
+                <label for="custom-direction">方向系数</label><input id="custom-direction" placeholder="-1,-1,1,-1,-1,1">
+            </div>
+            <div class="manual-dialog-actions"><button type="button" onclick="document.getElementById('profile-dialog').close()">取消</button><button id="custom-profile-confirm" type="button">保存并使用</button></div>
+        </form>
+    </dialog>
+    <main class="layout">
+        <section class="panel">
+            <div class="plot-toolbar"><b>EE</b><div class="plot-readout"><span class="readout-title left-label">左臂</span><span id="left-x">—</span><span id="left-y">—</span><span id="left-z">—</span><span id="left-v">—</span><span class="readout-title">右臂</span><span id="right-x">—</span><span id="right-y">—</span><span id="right-z">—</span><span id="right-v">—</span></div><button data-arm="left">左臂</button><button
+                    data-arm="right">右臂</button><button data-arm="both">同时</button></div>
+            <div id="plot"></div>
+        </section>
+        <div id="column-resizer" class="column-resizer" role="separator" tabindex="0" aria-label="调整轨迹与视频宽度" aria-orientation="vertical" aria-valuemin="30" aria-valuemax="70" aria-valuenow="62" title="拖动调整轨迹与视频宽度"></div>
+        <section class="panel video-panel"><video id="video" controls preload="metadata"></video>
+            <div id="row-resizer" class="row-resizer" role="separator" aria-label="调整视频与速度图高度" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50" tabindex="0" title="上下拖动调整高度；双击恢复"></div>
+            <div class="speed-charts"><div id="speed-chart-right"></div><div id="speed-chart-left"></div></div>
+        </section>
+    </main>
+    <section class="timeline-bar">
+        <div class="timeline-row"><div class="timeline-meta"><span id="frame" class="timeline-pill">0 / —</span><span id="time" class="timeline-pill">0.000 s</span><span id="fps" class="timeline-pill">—</span></div>
+            <div id="timeline-track" class="timeline-track"><input id="scrub" aria-label="播放帧" type="range" min="0" max="1" step="1"
+                    value="0"></div>
+            <div class="speed-control"><span>速度</span><select id="rateSelect" aria-label="播放倍速">
+                    <option value=".5">0.5×</option>
+                    <option value=".75">0.75×</option>
+                    <option value="1" selected>1×</option>
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="2">2×</option>
+                    <option value="4">4×</option>
+                </select></div>
+        </div>
+    </section>
+    <script src="assets/h01-viewer-public.js" defer></script>
+</body>
+</html>

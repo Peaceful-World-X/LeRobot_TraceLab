@@ -326,6 +326,18 @@ def plotly_asset() -> FileResponse:
     return FileResponse(Path(spec.origin).parent / "package_data/plotly.min.js", media_type="application/javascript")
 
 
+@app.get("/assets/viewer-core.js")
+def viewer_core_asset() -> FileResponse:
+    """两版页面共用同一份轨迹和播放逻辑。"""
+    return FileResponse(Path(__file__).parent / 'public/assets/viewer-core.js', media_type='application/javascript')
+
+
+@app.get("/assets/viewer.css")
+def viewer_style_asset() -> FileResponse:
+    """两版页面共用工作区样式。"""
+    return FileResponse(Path(__file__).parent / 'public/assets/viewer.css', media_type='text/css')
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     """HTML 与 Python 放在同一目录即可运行。"""

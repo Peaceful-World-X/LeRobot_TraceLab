@@ -7,309 +7,8 @@
     <title>LeRobot 轨迹工作台</title>
     <link rel="icon" href="data:,">
     <script src="assets/plotly.min.js" defer></script>
-    <style>
-        :root {
-            --cream: #f7f3ee;
-            --ink: #262421;
-            --panel: #fffaf5;
-            --line: #e4d9ce;
-            --orange: #d97757;
-            --blue: #6d8fc7
-        }
-
-        body {
-            margin: 0;
-            background: var(--cream);
-            color: var(--ink);
-            font: 14px system-ui, -apple-system, sans-serif
-        }
-
-        header {
-            padding: 14px 18px;
-            background: var(--ink);
-            color: #fffaf5;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap
-        }
-
-        input {
-            flex: 1;
-            min-width: 420px;
-            background: #fffaf5;
-            color: var(--ink);
-            border: 1px solid #9b8b7e;
-            padding: 9px;
-            border-radius: 6px
-        }
-
-        button {
-            padding: 9px 14px;
-            border: 0;
-            border-radius: 6px;
-            background: var(--orange);
-            color: #fff;
-            cursor: pointer
-        }
-
-        select {
-            background: #fffaf5;
-            color: var(--ink);
-            border: 1px solid #b9a99d;
-            border-radius: 6px;
-            padding: 7px 28px 7px 10px
-        }
-
-        .layout {
-            display: grid;
-            grid-template-columns: minmax(360px, 1.65fr) 8px minmax(360px, 1fr);
-            height: calc(100vh - 125px);
-            min-height: 560px;
-            gap: 12px;
-            padding: 12px
-        }
-
-        .plot-toolbar {
-            height: 42px;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            padding: 0 12px;
-            border-bottom: 1px solid var(--line)
-        }
-
-        .plot-toolbar b {
-            margin-right: 8px
-        }
-
-        .plot-toolbar button {
-            padding: 5px 10px;
-            font-size: 12px
-        }
-
-        .panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            min-height: 0;
-            box-shadow: 0 2px 8px #50351b12
-        }
-
-        .video-panel {
-            display: grid;
-            grid-template-rows: minmax(0, var(--video-share, 1fr)) 8px minmax(0, var(--charts-share, 1fr));
-            gap: 6px;
-            padding: 10px;
-            min-width: 0
-        }
-
-        .video-panel video {
-            min-height: 0;
-            height: 100%;
-            min-width: 0
-        }
-
-        .row-resizer {
-            height: 8px;
-            background: #d6c5b7;
-            border-radius: 5px;
-            cursor: row-resize;
-            touch-action: none;
-            position: relative
-        }
-        .row-resizer::after {
-            content: '';
-            position: absolute;
-            width: 36px;
-            height: 2px;
-            background: #887361;
-            left: calc(50% - 18px);
-            top: 3px
-        }
-        .row-resizer:hover, .row-resizer:focus-visible, .row-resizer.dragging { background: #d97757 }
-        body.resizing-height { cursor: row-resize; user-select: none }
-
-        .column-resizer {
-            width: 8px;
-            border-radius: 5px;
-            background: #d6c5b7;
-            cursor: col-resize;
-            align-self: stretch;
-            transition: background .15s
-        }
-
-        .column-resizer:hover,
-        .column-resizer.dragging {
-            background: var(--orange)
-        }
-
-        #speed-chart-right, #speed-chart-left { height: 100%; min-height: 0; min-width: 0; border-top: 1px solid var(--line); box-sizing: border-box }
-        .speed-charts { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 3px }
-
-        #plot {
-            height: calc(100% - 42px);
-            min-height: 0;
-            background: #f0e8df;
-            border: 1px solid #d8c8ba;
-            border-radius: 7px;
-            overflow: hidden
-        }
-
-        video {
-            width: 100%;
-            height: 100%;
-            min-height: 0;
-            object-fit: contain;
-            background: #171513
-        }
-
-        .timeline-bar {
-            padding: 12px 18px 16px;
-            background: var(--ink);
-            color: #fffaf5
-        }
-
-        .timeline-row {
-            display: flex;
-            align-items: center;
-            gap: 14px
-        }
-
-        .timeline-track {
-            position: relative;
-            flex: 1;
-            height: 26px;
-            border-radius: 6px;
-            background: #4a403a;
-            overflow: visible
-        }
-
-        .timeline-track input {
-            position: absolute;
-            inset: -8px 0 auto;
-            width: 100%;
-            min-width: 0;
-            height: 42px;
-            margin: 0;
-            padding: 0;
-            border: 0;
-            box-sizing: border-box;
-            overflow: visible;
-            background: transparent;
-            appearance: none;
-            z-index: 2
-        }
-
-        .timeline-track input::-webkit-slider-runnable-track {
-            height: 26px;
-            background: transparent
-        }
-
-        .timeline-track input::-webkit-slider-thumb {
-            appearance: none;
-            width: 4px;
-            height: 26px;
-            background: #fff;
-            border-radius: 2px;
-            box-shadow: 0 0 0 2px #26242155
-        }
-
-        .timeline-track input::-moz-range-track {
-            height: 26px;
-            background: transparent
-        }
-
-        .timeline-track input::-moz-range-thumb {
-            width: 4px;
-            height: 26px;
-            background: #fff;
-            border: 0;
-            border-radius: 2px
-        }
-
-        .speed-control {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            white-space: nowrap
-        }
-
-        .speed-control select {
-            background: #fffaf5;
-            border: 0;
-            padding: 7px 10px
-        }
-
-        .error {
-            color: #a33b2b
-        }
-
-        dialog.config-box { color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 24px; width: min(760px, 88vw); box-shadow: 0 8px 30px #0004; }
-        dialog.config-box::backdrop { background: #17151388; }
-        .config-grid { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto minmax(180px, 1fr); gap: 6px 10px; align-items: center; margin-top: 8px; font-size: 12px; }
-        .config-grid input { min-width: 0; width: 100%; box-sizing: border-box; padding: 5px 7px; }
-        .config-grid button { padding: 5px 10px; }
-
-        @media(max-width:1100px) {
-            .layout {
-                grid-template-columns: 1fr 1fr
-            }
-
-            .column-resizer {
-                display: none
-            }
-        }
-
-        @media(max-width:900px) {
-            .layout {
-                grid-template-columns: 1fr
-            }
-
-            .panel {
-                min-height: 360px
-            }
-
-            #plot {
-                height: 500px
-            }
-
-            video {
-                min-height: 360px
-            }
-
-            input {
-                min-width: 240px
-            }
-        }
-
-        body { overflow: hidden; height: 100vh }
-        .layout { height: calc(100vh - 126px); min-height: 0; padding: 8px; box-sizing: border-box }
-        .panel { min-height: 0; overflow: hidden }
-        #plot { height: calc(100% - 42px); min-height: 0; background: #eee4da; border: 2px solid #cdb9a8; border-radius: 8px; box-shadow: inset 0 0 0 1px #fffaf5, 0 2px 8px #50351b30 }
-        .timeline-bar { position: relative; z-index: 3 }
-        .timeline-track input::-webkit-slider-thumb { box-sizing: border-box; width: 4px; height: 42px; margin-top: -8px; background: #fff; border: 1px solid var(--orange); box-shadow: 0 1px 4px #17110dcc }
-        .timeline-track input::-moz-range-thumb { box-sizing: border-box; width: 4px; height: 42px; background: #fff; border: 1px solid var(--orange); box-shadow: 0 1px 4px #17110dcc }
-        .plot-readout{display:flex;align-items:center;gap:5px;margin-right:10px;font-size:11px;font-variant-numeric:tabular-nums}.plot-readout>span:not(.readout-title){background:#f0e7df;border-radius:4px;padding:4px 5px;min-width:48px;text-align:center}.readout-title{font-weight:700;color:var(--blue);margin-left:5px}.readout-title.left-label{color:var(--orange)}
-        .timeline-meta{display:flex;gap:6px;flex:0 0 auto}.timeline-pill{background:#f0e7df;color:var(--ink);border-radius:6px;padding:6px 9px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.timeline-row{gap:10px}.timeline-track{min-width:0;flex:1}
-        button:disabled { opacity: .5; cursor: default }
-        .column-resizer { touch-action: none }
-        .plot-readout { flex-wrap: wrap }
-        @media(max-width:900px) {
-            body { overflow: auto; height: auto }
-            .layout { display: flex; flex-direction: column; height: auto }
-            .panel { height: 540px; flex: none }
-            .video-panel { height: 650px }
-            .plot-toolbar { height: auto; min-height: 42px; flex-wrap: wrap; padding: 6px }
-            .plot-readout { margin: 0 }
-            #plot { height: 450px }
-            .timeline-row { flex-wrap: wrap }
-            .timeline-track { flex-basis: 100%; order: 2; margin-top: 10px }
-            input { min-width: 140px }
-            video { min-height: 0 }
-            .timeline-meta { flex-wrap: wrap }
-        }
-    </style>
+    <script src="assets/viewer-core.js" defer></script>
+    <link rel="stylesheet" href="assets/viewer.css">
 </head>
 
 <body>
@@ -323,8 +22,8 @@
     </div></dialog>
     <main class="layout">
         <section class="panel">
-            <div class="plot-toolbar"><b>EE</b><div class="plot-readout"><span class="readout-title left-label">左臂</span><span id="left-x">—</span><span id="left-y">—</span><span id="left-z">—</span><span id="left-v">—</span><span class="readout-title">右臂</span><span id="right-x">—</span><span id="right-y">—</span><span id="right-z">—</span><span id="right-v">—</span></div><button data-arm="left" onclick="setArmView('left')">左臂</button><button
-                    data-arm="right" onclick="setArmView('right')">右臂</button><button data-arm="both" onclick="setArmView('both')">同时</button></div>
+            <div class="plot-toolbar"><b>EE</b><div class="plot-readout"><span class="readout-title left-label">左臂</span><span id="left-x">—</span><span id="left-y">—</span><span id="left-z">—</span><span id="left-v">—</span><span class="readout-title">右臂</span><span id="right-x">—</span><span id="right-y">—</span><span id="right-z">—</span><span id="right-v">—</span></div><button data-arm="left">左臂</button><button
+                    data-arm="right">右臂</button><button data-arm="both">同时</button></div>
             <div id="plot"></div>
         </section>
         <div id="column-resizer" class="column-resizer" role="separator" tabindex="0" aria-label="调整轨迹与视频宽度" aria-orientation="vertical" aria-valuemin="30" aria-valuemax="70" aria-valuenow="62" title="拖动调整轨迹与视频宽度"></div>
@@ -337,7 +36,7 @@
         <div class="timeline-row"><div class="timeline-meta"><span id="frame" class="timeline-pill">0 / —</span><span id="time" class="timeline-pill">0.000 s</span><span id="fps" class="timeline-pill">—</span></div>
             <div id="timeline-track" class="timeline-track"><input id="scrub" aria-label="播放帧" type="range" min="0" max="1" step="1"
                     value="0"></div>
-            <div class="speed-control"><span>速度</span><select id="rateSelect" aria-label="播放倍速" onchange="setRate(Number(this.value))">
+            <div class="speed-control"><span>速度</span><select id="rateSelect" aria-label="播放倍速">
                     <option value=".5">0.5×</option>
                     <option value=".75">0.75×</option>
                     <option value="1" selected>1×</option>
@@ -349,13 +48,9 @@
         </div>
     </section>
     <script>
-'use strict';
 const $ = id => document.getElementById(id);
-const video = $('video'), scrub = $('scrub');
-const ARMS = { right: { name: '右臂', color: '#78a6d8', light: '#b8cff0', base: 0 }, left: { name: '左臂', color: '#c88768', light: '#e4ae92', base: 3 } }; // 本体左右语义。
-let d = null, cache = {}, ready = false, generation = 0, controller = null;
-let work = Promise.resolve(), pendingFrame = null, rendering = false, lastFrame = -1, clock = null, armView = 'both';
-
+let viewer;
+function message(text, error=false) { $('status').textContent=text; $('status').className=error?'error':''; }
 function toggleConfig() { $('config-box').showModal(); loadProfileConfig($('profile').dataset.customSource || 'H01'); }
 async function loadProfileConfig() {
     const name = arguments[0] || $('profile').value; if (!name) return;
@@ -371,246 +66,6 @@ async function saveProfileConfig() {
     } catch (e) { $('config-status').textContent = e.message; }
 }
 
-// 仅使用大于 0 的有限速度；首帧和全静止序列没有有效统计值。
-function speedStats(values) {
-    const a = values.filter(v => Number.isFinite(v) && v > 0).sort((x, y) => x - y);
-    const mid = Math.floor(a.length / 2);
-    return a.length ? { mean: a.reduce((s, v) => s + v, 0) / a.length, median: a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2 } : { mean: null, median: null };
-}
-
-// 统一消息出口，保留原页面的单行状态位置。
-function message(text, error = false) {
-    $('status').textContent = text;
-    $('status').className = error ? 'error' : '';
-}
-
-// 只在图表和视频都准备好时开放控制。
-function enable(value) {
-    ready = value;
-    video.controls = value;
-    for (const el of [scrub, $('rateSelect'), ...document.querySelectorAll('[data-arm]')]) el.disabled = !value;
-}
-
-// Plotly 更新串行执行，换数据后旧任务自动失效。
-function schedule(task, id = generation) {
-    const result = work.then(() => id === generation ? task() : undefined);
-    work = result.catch(error => { if (id === generation) { enable(false); video.pause(); message(error.message, true); } });
-    return result;
-}
-
-// 等待视频 metadata，切换文件会取消旧等待。
-function loadVideo(url, signal) {
-    return new Promise((resolve, reject) => {
-        const finish = error => {
-            clearTimeout(timer);
-            video.removeEventListener('loadedmetadata', loaded);
-            video.removeEventListener('error', failed);
-            signal.removeEventListener('abort', aborted);
-            error ? reject(error) : resolve();
-        };
-        const loaded = () => finish();
-        const failed = () => finish(new Error('视频无法加载或编码不受支持'));
-        const aborted = () => finish(new DOMException('加载已取消', 'AbortError'));
-        const timer = setTimeout(() => finish(new Error('视频加载超时')), 30000);
-        video.addEventListener('loadedmetadata', loaded);
-        video.addEventListener('error', failed);
-        signal.addEventListener('abort', aborted, { once: true });
-        if (signal.aborted) { aborted(); return; }
-        video.src = url;
-        video.load();
-    });
-}
-
-// 后发请求优先，不让较慢的旧响应覆盖当前文件。
-async function loadEpisode() {
-    const path = $('path').value.trim();
-    const episodeIndex = Number($('episode-index').value);
-    const profile = $('profile').value;
-    if (!profile) { message('请先加载有效的类别配置', true); return; }
-    if (!path) { message('请输入数据集总目录', true); return; }
-    if (!Number.isInteger(episodeIndex) || episodeIndex < 0) { message('Episode 必须是非负整数', true); return; }
-    const id = ++generation, rate = Number($('rateSelect').value);
-    controller?.abort();
-    const request = controller = new AbortController();
-    enable(false); video.pause(); stopClock(); pendingFrame = null;
-    video.removeAttribute('src'); video.load();
-    message('加载中…');
-    const timer = setTimeout(() => request.abort(), 60000);
-    try {
-        const query = { dataset_path: path, episode_index: String(episodeIndex), profile };
-        if (profile === '__custom__') query.config_json = localStorage.getItem('ee-viewer-custom-config') || '';
-        const response = await fetch(`api/episode?${new URLSearchParams(query)}`, { signal: request.signal });
-        const data = await response.json();
-        if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '加载失败，请检查文件路径');
-        if (id !== generation) return;
-        await loadVideo(data.video_url, request.signal);
-        if (id !== generation) return;
-        if (!Number.isFinite(video.duration) || Math.abs(video.duration - data.duration) > Math.max(.02, .5 / data.fps)) throw new Error('视频时长与轨迹不一致，无法同步播放');
-        await schedule(async () => { d = data; prepare(); await draw(); }, id);
-        if (id !== generation) return;
-        lastFrame = -1; scrub.max = d.frames - 1; scrub.value = 0;
-        video.playbackRate = rate; $('rateSelect').value = String(rate); enable(true);
-        try { localStorage.setItem('ee-viewer-dataset-path', path); localStorage.setItem('ee-viewer-episode-index', String(episodeIndex)); localStorage.setItem('ee-viewer-profile', data.profile); } catch {}
-        $('fps').textContent = `${d.fps} Hz`;
-        render(0);
-        message(`episode ${d.episode} 已加载${d.warnings.length ? ' · ' + d.warnings.join('；') : ''}`);
-    } catch (error) {
-        if (id === generation) message(error.name === 'AbortError' ? '加载超时，请重试' : error.message, true);
-    } finally { clearTimeout(timer); }
-}
-
-// 完整坐标和 hover 信息只计算一次，播放时复用。
-function prepare() {
-    cache = {};
-    const single = Boolean(d.single_arm);
-    for (const id of ['right-x','right-y','right-z','right-v']) $(id).style.display = single ? 'none' : '';
-    document.querySelectorAll('[data-arm="right"]').forEach(el => el.style.display = single ? 'none' : '');
-    for (const arm of Object.keys(ARMS)) {
-        const speeds = d[`${arm}_speed`];
-        cache[arm] = { x: d[arm].map(p => p[0]), y: d[arm].map(p => p[1]), z: d[arm].map(p => p[2]), speeds, stats: speedStats(speeds),
-            frames: Array.from({ length: d.frames }, (_, i) => i),
-            custom: speeds.map((v, i) => [i, d.source_frames?.[i] ?? i, i / d.fps, v == null ? '—' : v.toFixed(4)]) };
-    }
-    const colors = cache.left.frames.map(i => {
-        const l = cache.left.speeds[i] > Math.max((cache.left.stats.median || 0) * .35, 1e-4);
-        const r = cache.right.speeds[i] > Math.max((cache.right.stats.median || 0) * .35, 1e-4);
-        return l && r ? '#c78fa7' : l ? '#d39a7b' : r ? '#9ab9df' : '#6b625d';
-    });
-    const stops = []; let start = 0;
-    for (let i = 1; i <= colors.length; i++) if (i === colors.length || colors[i] !== colors[start]) {
-        stops.push(`${colors[start]} ${100 * start / colors.length}% ${100 * i / colors.length}%`); start = i;
-    }
-    $('timeline-track').style.background = `linear-gradient(90deg, ${stops.join(',')})`;
-}
-
-// 保留完整轨迹上的每个采样点，已播放轨迹加深、当前点放大。
-function traces(arm) {
-    const a = ARMS[arm], c = cache[arm];
-    const hovertemplate = `frame %{customdata[0]} · source %{customdata[1]}<br>t=%{customdata[2]:.3f} s<br>x=%{x:.4f} m · y=%{y:.4f} m · z=%{z:.4f} m<br>v=%{customdata[3]} m/s<extra>${a.name}</extra>`;
-    const common = { type: 'scatter3d', mode: 'lines+markers', hovertemplate, showlegend: false };
-    return [
-        { ...common, x: c.x, y: c.y, z: c.z, customdata: c.custom, name: `${a.name}完整`, opacity: .28, line: { color: a.color, width: 3 }, marker: { color: a.color, size: 2.8 } },
-        { ...common, x: c.x.slice(0, 1), y: c.y.slice(0, 1), z: c.z.slice(0, 1), customdata: c.custom.slice(0, 1), name: `${a.name}已播放`, line: { color: a.color, width: 7 }, marker: { color: a.color, size: 2.8 } },
-        { ...common, x: [c.x[0]], y: [c.y[0]], z: [c.z[0]], customdata: [c.custom[0]], name: `${a.name}当前`, mode: 'markers', marker: { color: a.light, size: 8 } },
-    ];
-}
-
-// 数据加载时初始化，重载也重新绑定点选事件。
-async function draw() {
-    const plot = $('plot'), camera = plot.layout?.scene?.camera;
-    plot.removeAllListeners?.('plotly_click');
-    await Plotly.react(plot, Object.keys(ARMS).flatMap(traces), {
-        uirevision: 'ee-trajectory-camera', paper_bgcolor: '#fffaf5', font: { color: '#262421' }, margin: { l: 0, r: 0, t: 30, b: 0 },
-        scene: { aspectmode: 'data', ...(camera ? { camera } : {}), xaxis: { title: { text: 'X (m)' } }, yaxis: { title: { text: 'Y (m)' } }, zaxis: { title: { text: 'Z (m)' } } },
-    }, { responsive: true, displaylogo: false });
-    plot.on('plotly_click', clicked);
-    for (const arm of Object.keys(ARMS)) {
-        const a = ARMS[arm], c = cache[arm], chart = $(`speed-chart-${arm}`);
-        const series = [
-            { x: c.frames, y: c.speeds, customdata: c.custom, mode: 'lines', name: '全部', line: { color: '#cfc4bb', width: 1.2 } },
-            { x: [0], y: [null], customdata: [c.custom[0]], mode: 'lines', name: '已播放', line: { color: a.color, width: 2 } },
-        ];
-        for (const [key, label, dash] of [['median', '中位数', 'dash'], ['mean', '平均数', 'dot']]) if (c.stats[key] !== null) {
-            series.push({ x: [0, Math.max(1, d.frames - 1)], y: [c.stats[key], c.stats[key]], mode: 'lines', name: label, line: { color: a.light, width: 1.4, dash }, hovertemplate: `${label}（非零）%{y:.4f} m/s<extra></extra>` });
-        }
-        chart.removeAllListeners?.('plotly_click');
-        await Plotly.react(chart, series, {
-            margin: { l: 38, r: 8, t: 35, b: 20 }, autosize: true, paper_bgcolor: '#fffaf5', plot_bgcolor: '#fffaf5',
-            font: { color: '#62584f', size: 9 }, title: { text: `${a.name}速度`, font: { size: 11 }, x: .02 },
-            legend: { orientation: 'h', x: 0, y: 1.12, font: { size: 9 } },
-            xaxis: { range: [0, Math.max(1, d.frames - 1)], gridcolor: '#eadfd5' }, yaxis: { title: { text: 'm/s' }, gridcolor: '#eadfd5' }, uirevision: `${generation}-${arm}`,
-        }, { responsive: true, displaylogo: false });
-        chart.on('plotly_click', clicked);
-    }
-    await applyArmView();
-}
-
-// 点选只接受真正带有采样帧号的轨迹点。
-function clicked(event) {
-    const frame = event.points?.[0]?.customdata?.[0];
-    if (Number.isInteger(frame)) seek(frame);
-}
-
-// 同一帧不重复渲染；绘图积压时仅保留最新目标帧。
-function render(frame) {
-    if (!ready || !Number.isInteger(frame) || frame === lastFrame) return;
-    pendingFrame = frame;
-    if (rendering) return;
-    rendering = true;
-    schedule(async () => {
-        if (!ready || pendingFrame === null) return;
-        const f = pendingFrame; pendingFrame = null;
-        // 播放更新轨迹数据时固定当前相机，避免 Plotly 重绘把视角复位。
-        const camera = $('plot').layout?.scene?.camera;
-        const update = { x: [], y: [], z: [], customdata: [] }, indices = [], speeds = [];
-        for (const arm of Object.keys(ARMS)) {
-            const c = cache[arm], a = ARMS[arm];
-            for (const axis of ['x', 'y', 'z']) update[axis].push(c[axis].slice(0, f + 1), [c[axis][f]]);
-            update.customdata.push(c.custom.slice(0, f + 1), [c.custom[f]]); indices.push(a.base + 1, a.base + 2);
-            speeds.push(Plotly.restyle(`speed-chart-${arm}`, { x: [c.frames.slice(0, f + 1)], y: [c.speeds.slice(0, f + 1)], customdata: [c.custom.slice(0, f + 1)] }, [1]));
-            for (const axis of ['x', 'y', 'z']) $(`${arm}-${axis}`).textContent = c[axis][f].toFixed(4);
-            $(`${arm}-v`).textContent = c.speeds[f] == null ? '—' : c.speeds[f].toFixed(4);
-        }
-        await Promise.all([Plotly.restyle('plot', update, indices), ...speeds]);
-        if (camera) await Plotly.relayout('plot', { 'scene.camera': camera });
-        lastFrame = f; scrub.value = f;
-        $('frame').textContent = d.source_frames ? `输出帧 ${f}/${d.frames - 1} · 原始帧 ${d.source_frames[f]}` : `frame ${f}/${d.frames - 1}`;
-        $('time').textContent = `${(f / d.fps).toFixed(3)} s`;
-    }).catch(() => {}).finally(() => { rendering = false; if (ready && pendingFrame !== null) render(pendingFrame); });
-}
-
-// 坐标轴和相机保持原样，仅切换图层可见性。
-async function applyArmView() {
-    for (const [arm, a] of Object.entries(ARMS)) await Plotly.restyle('plot', { visible: !d.single_arm || arm !== 'right' ? (armView === 'both' || armView === arm) : false }, [a.base, a.base + 1, a.base + 2]);
-}
-function setArmView(mode) {
-    if (ready) { armView = mode; schedule(applyArmView).catch(() => {}); }
-}
-function setRate(rate) { if (ready) video.playbackRate = rate; }
-
-// 按视频帧区间取整；微小容差抵消 MP4 时间戳舍入。
-function currentFrame(time = video.currentTime) { return Math.max(0, Math.min(d.frames - 1, Math.floor(time * d.fps + 1e-4))); }
-function seek(frame) { if (ready) video.currentTime = (Math.max(0, Math.min(d.frames - 1, frame)) + .001) / d.fps; }
-function stopClock() {
-    if (clock === null) return;
-    video.cancelVideoFrameCallback ? video.cancelVideoFrameCallback(clock) : cancelAnimationFrame(clock);
-    clock = null;
-}
-
-// 优先用实际呈现帧驱动轨迹，旧浏览器回退到动画回调。
-function startClock() {
-    stopClock(); const id = generation;
-    const tick = (_now, metadata) => {
-        clock = null;
-        if (!ready || id !== generation) return;
-        if (!video.seeking) render(currentFrame(metadata?.mediaTime ?? video.currentTime));
-        if (!video.paused && !video.ended) next();
-    };
-    const next = () => { clock = video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); };
-    if (ready && !video.paused) next();
-}
-
-// 两个分隔条共用拖动逻辑，保留原来的横向/纵向布局调整。
-function resizer(id, parent, axis, initial, min, max, update) {
-    const handle = $(id); let ratio = initial, pointer = null, origin = 0, start = initial;
-    const set = value => { ratio = Math.max(min, Math.min(max, value)); update(ratio); handle.setAttribute('aria-valuenow', Math.round(ratio * 100)); };
-    handle.addEventListener('pointerdown', e => {
-        if (e.button !== 0) return;
-        pointer = e.pointerId; origin = axis === 'x' ? e.clientX : e.clientY; start = ratio;
-        handle.setPointerCapture(pointer); e.preventDefault();
-    });
-    handle.addEventListener('pointermove', e => {
-        if (pointer === e.pointerId) set(start + ((axis === 'x' ? e.clientX : e.clientY) - origin) / Math.max(1, axis === 'x' ? parent.clientWidth : parent.clientHeight));
-    });
-    for (const name of ['pointerup', 'pointercancel', 'lostpointercapture']) handle.addEventListener(name, () => { pointer = null; });
-    handle.addEventListener('dblclick', () => set(initial));
-    handle.addEventListener('keydown', e => {
-        const minus = axis === 'x' ? 'ArrowLeft' : 'ArrowUp', plus = axis === 'x' ? 'ArrowRight' : 'ArrowDown';
-        if ([minus, plus, 'Home'].includes(e.key)) { e.preventDefault(); set(e.key === 'Home' ? initial : ratio + (e.key === plus ? .05 : -.05)); }
-    });
-}
-
-// 事件只注册一次，重复加载不叠加监听器。
 async function initProfiles() {
     const response = await fetch('api/profiles', { cache: 'no-store' });
     const config = await response.json();
@@ -621,37 +76,27 @@ async function initProfiles() {
     $('profile').disabled = false; $('load-button').disabled = false;
 }
 
+// 服务器入口仅负责读取路径和类别，绘图由共享查看器完成。
+async function loadEpisode() {
+    const path = $('path').value.trim(), episodeIndex = Number($('episode-index').value), profile = $('profile').value;
+    if (!profile || !path || !Number.isInteger(episodeIndex) || episodeIndex < 0) { message('请选择类别、数据集目录和有效 Episode', true); return; }
+    await viewer.load(async signal => {
+        const query = { dataset_path: path, episode_index: String(episodeIndex), profile };
+        if (profile === '__custom__') query.config_json = localStorage.getItem('ee-viewer-custom-config') || '';
+        const response = await fetch(`api/episode?${new URLSearchParams(query)}`, { signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '加载失败，请检查文件路径');
+        try { localStorage.setItem('ee-viewer-dataset-path', path); localStorage.setItem('ee-viewer-episode-index', String(episodeIndex)); localStorage.setItem('ee-viewer-profile', data.profile); } catch {}
+        return data;
+    });
+}
 document.addEventListener('DOMContentLoaded', async () => {
-    enable(false);
-    if (!window.Plotly) { message('图表资源未加载，请先 pip install plotly，再刷新页面', true); return; }
+    viewer = createTrajectoryViewer();
     $('path').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) loadEpisode(); });
     $('episode-index').addEventListener('keydown', e => { if (e.key === 'Enter') loadEpisode(); });
-    video.addEventListener('play', startClock);
-    for (const name of ['pause', 'ended']) video.addEventListener(name, () => { stopClock(); if (ready && !video.seeking) render(currentFrame()); });
-    video.addEventListener('seeked', () => { if (ready) { render(currentFrame()); startClock(); } });
-    video.addEventListener('timeupdate', () => { if (ready && !video.seeking && (video.paused || !video.requestVideoFrameCallback)) render(currentFrame()); });
-    video.addEventListener('error', () => { if (ready) { enable(false); video.pause(); stopClock(); message('视频播放失败，请重新加载 episode', true); } });
-    video.addEventListener('ratechange', () => { if (ready) $('rateSelect').value = String(video.playbackRate); });
-    scrub.addEventListener('input', () => seek(Number(scrub.value)));
-    document.addEventListener('keydown', async e => {
-        if (!ready || e.code !== 'Space' || e.repeat || e.target.closest('input, select, textarea, button, [contenteditable="true"], [role="separator"]')) return;
-        e.preventDefault();
-        try { video.paused ? await video.play() : video.pause(); } catch { message('无法播放视频，请重试', true); }
-    });
-    const layout = document.querySelector('.layout'), panel = document.querySelector('.video-panel');
-    resizer('column-resizer', layout, 'x', .62, .3, .7, r => layout.style.gridTemplateColumns = `minmax(0, ${r}fr) 8px minmax(0, ${1-r}fr)`);
-    resizer('row-resizer', panel, 'y', .5, .2, .8, r => { panel.style.setProperty('--video-share', `${r}fr`); panel.style.setProperty('--charts-share', `${1-r}fr`); });
-    let timer;
-    const observer = new ResizeObserver(() => {
-        clearTimeout(timer); timer = setTimeout(() => { if (ready) schedule(() => Promise.all(['plot', 'speed-chart-left', 'speed-chart-right'].map(id => Plotly.Plots.resize(id)))).catch(() => {}); }, 100);
-    });
-    for (const id of ['plot', 'speed-chart-left', 'speed-chart-right']) observer.observe($(id));
-    window.addEventListener('pagehide', () => { controller?.abort(); stopClock(); observer.disconnect(); clearTimeout(timer); });
     try { $('path').value = localStorage.getItem('ee-viewer-dataset-path') || ''; $('episode-index').value = localStorage.getItem('ee-viewer-episode-index') || '0'; } catch {}
-    try {
-        await initProfiles();
+    try { await initProfiles(); } catch (error) { message(error.message, true); return; }
     $('profile').addEventListener('change', () => { if ($('profile').value === '__custom__') { $('profile').dataset.customSource = $('profile').options[0]?.value || ''; toggleConfig(); } });
-    } catch (error) { message(error.message, true); return; }
     if ($('path').value) loadEpisode();
 });
     </script>
