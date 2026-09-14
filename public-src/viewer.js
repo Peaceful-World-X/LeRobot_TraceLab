@@ -12,6 +12,7 @@ let viewer;
 let profile = PROFILES.H01
 let previousProfileId = 'H01'
 let directoryHandle = null
+const EXAMPLE_ROOT = 'example'
 
 // 将浏览器 File 包装成 hyparquet 所需的异步字节缓冲区。
 function fileBuffer(file, signal) {
@@ -110,6 +111,18 @@ async function readParquet(file, profile, fps, signal) {
 async function filesFromSelection(profile, signal) {
   const root = directoryHandle
   if (root) return openEpisode(root, $('episode-input').valueAsNumber, profile.videoKey, signal)
+  // 公开页面首次打开时直接加载仓库内置示例，用户选择目录后自动切换到本地数据。
+  if (!$('parquet-input').files[0] && !$('video-input').files[0]) {
+    const number = String($('episode-input').valueAsNumber).padStart(6, '0')
+    const parquetResponse = await fetch(`${EXAMPLE_ROOT}/data/chunk-000/episode_${number}.parquet`, { signal })
+    const videoResponse = await fetch(`${EXAMPLE_ROOT}/videos/chunk-000/${profile.videoKey}/episode_${number}.mp4`, { signal })
+    const infoResponse = await fetch(`${EXAMPLE_ROOT}/meta/info.json`, { signal })
+    if (!parquetResponse.ok || !videoResponse.ok || !infoResponse.ok) throw new Error('示例数据加载失败，请选择本地数据集目录')
+    const parquet = new File([await parquetResponse.blob()], `episode_${number}.parquet`)
+    const video = new File([await videoResponse.blob()], `episode_${number}.mp4`, { type: 'video/mp4' })
+    const info = await infoResponse.json()
+    return { parquet, video, mapping: null, multiEpisode: true, fps: Number(info.fps) }
+  }
   return { parquet: $('parquet-input').files[0], video: $('video-input').files[0], mapping: $('mapping-input').files[0], multiEpisode: false, fps: Number($('fps-input').value) }
 }
 
@@ -172,4 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('directory-input').addEventListener('click', chooseDirectory)
   $('parquet-input').addEventListener('change', () => { if ($('parquet-input').files.length) message('Parquet 已选择') })
   $('video-input').addEventListener('change', () => { if ($('video-input').files.length) message('视频已选择') })
+  $('directory-name').textContent = '内置示例 · episode 0'
+  $('directory-input').title = '当前使用仓库内置示例；点击可选择本地数据集'
+  loadEpisode()
 })
