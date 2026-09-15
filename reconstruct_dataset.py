@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """同一 H01 洗碗任务的五阶段抽帧重构；只选择真实来源帧，不插值。
 
-数据处理框架（每个 episode 独立分析，批量时按源 episode 顺序执行）
+数据处理框架（每个 episode 独立并行分析，完成后按源 episode 排序）
 ===============================================================
 
   读取 meta/info.json、episodes.jsonl、tasks.jsonl
@@ -67,10 +67,14 @@ from __future__ import annotations
 import argparse
 import csv
 from copy import deepcopy
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, fields
 import hashlib
 import json
+import multiprocessing as mp
+import os
+import time
 from pathlib import Path
 import shutil
 import subprocess
@@ -83,6 +87,7 @@ import pyarrow.parquet as pq
 from scipy.ndimage import distance_transform_edt, median_filter, uniform_filter1d
 from scipy.signal import find_peaks
 
+IMPLEMENTATION_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()  # 启动时固定版本，避免运行中编辑代码污染缓存。
 DEFAULT_SOURCE = Path('/shared_disk/users/lv.feng/data/private_data/robot/rect/COL26071359B_rect11/data/chunk-000/episode_000000.parquet')  # 仅为默认输入，算法不依赖路径。
 PHASE_ARMS = ('right', 'left', 'right', 'left', 'right')  # 洗碗任务的主臂交替先验。
 PHASE_NAMES = ('右臂倒垃圾', '左臂放碗和顶盖', '右臂放碗和顶盖', '左臂放碗和复位', '右臂复位')  # 运动阶段的任务含义。
@@ -1326,6 +1331,7 @@ class EpisodeRecord:
     analyzer: object
     plan: object
     source_hash: str
+    cache_hit: bool = False
 
 
 # 通过相邻临时目录替换派生结果，替换失败时恢复上一版。
@@ -1371,20 +1377,184 @@ def snapshot_reference(output):
         folder.rename(reference)
     return reference
 
+# 中断时取消尚未开始的视频任务，等待在途任务安全结束后再清理临时输出。
+@contextmanager
+def video_executor(workers):
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        yield pool
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
+# 缓存键同时包含实现版本和输入摘要；只复用同一代码、数据与规则的结果。
+def cache_digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                                    separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+
+
+# JSON 校验和用于识别截断或损坏文件；缓存不使用可执行的 pickle 格式。
+def read_cache(path, key):
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        payload = value['payload']
+        if value['key'] == key and value['sha256'] == cache_digest(payload):
+            return payload
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+# 临时文件完整关闭后原子替换；缓存失败不影响已经验证的数据输出。
+def write_cache(path, key, payload):
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                         prefix='.partial-', delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump({'key': key, 'sha256': cache_digest(payload), 'payload': payload},
+                      stream, ensure_ascii=False, allow_nan=False)
+        temporary.replace(path)
+    except OSError as error:
+        print(f'缓存写入失败，重构仍继续：{path}: {error}', file=sys.stderr, flush=True)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+# 只缓存已逐帧像素验证的视频；复用前核验源视频和缓存视频的内容哈希。
+def rewrite_video_cached(source, output, selected, fps, cache_dir):
+    if cache_dir is None or not source.is_file():
+        return rewrite_video(source, output, selected, fps)
+    source_hash = sha256(source)
+    key = cache_digest({'code': IMPLEMENTATION_SHA256, 'source': str(source),
+                        'sha256': source_hash, 'selected': np.asarray(selected).tolist(), 'fps': fps})
+    folder = cache_dir / 'video'
+    video, manifest = folder / f'{key}.mp4', folder / f'{key}.json'
+    cached = read_cache(manifest, key)
+    if cached and video.is_file() and sha256(video) == cached.get('video_sha256'):
+        report = cached['report']
+        if (report.get('decoded_pixels_equal') and report.get('verified_frames') == len(selected)
+                and report.get('source_sha256') == source_hash):
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(video, output)
+            if sha256(output) == cached['video_sha256'] and sha256(source) == source_hash:
+                return {**report, 'cache_hit': True}
+            output.unlink(missing_ok=True)
+    report = rewrite_video(source, output, selected, fps)
+    if report['source_sha256'] != source_hash:
+        raise ValueError(f'视频缓存期间源文件改变：{source}')
+    temporary = None
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=folder, prefix='.partial-', delete=False) as stream:
+            temporary = Path(stream.name)
+        shutil.copy2(output, temporary)
+        checksum = sha256(temporary)
+        temporary.replace(video)
+        write_cache(manifest, key, {'video_sha256': checksum, 'report': report})
+    except OSError as error:
+        print(f'视频缓存写入失败，重构仍继续：{error}', file=sys.stderr, flush=True)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return {**report, 'cache_hit': False}
+
+
+# 子进程只接收路径，固定元数据和规则在启动时传入，避免逐任务传输整个构建器。
+_ANALYSIS_CONTEXT = None  # 每个分析进程独立持有配置。
+
+
+# 限制 Arrow 内部线程，避免每个进程再创建几十个计算线程。
+def init_analysis_worker(info, rules, target_duration, cache_dir):
+    global _ANALYSIS_CONTEXT
+    _ANALYSIS_CONTEXT = (info, rules, target_duration, cache_dir)
+    pa.set_cpu_count(1)
+    pa.set_io_thread_count(1)
+
+
+# 返回进程号用于并行执行证据，来源行和选帧规则不变。
+def run_analysis_worker(source):
+    try:
+        return analyze_source_episode(source, *_ANALYSIS_CONTEXT), os.getpid()
+    except Exception as error:
+        error.add_note(f'分析源文件：{source}')
+        raise
+
+
+# 独立分析单条 episode；串行与多进程共用完全相同的算法。
+def analyze_source_episode(source, info, rules, target_duration, cache_dir=None):
+    source_hash = sha256(source)
+    table = pq.read_table(source)
+    if table.num_rows < 1:
+        raise ValueError(f'空 episode：{source}')
+    source_episodes = set(table['episode_index'].to_pylist())
+    if len(source_episodes) != 1:
+        raise ValueError(f'一个 parquet 只能包含一个 episode：{source}')
+    source_episode = int(next(iter(source_episodes)))
+    if table['frame_index'].to_pylist() != list(range(table.num_rows)):
+        raise ValueError(f'源 frame_index 必须从 0 连续编号：{source}')
+    key = cache_digest({'code': IMPLEMENTATION_SHA256, 'source': str(source), 'sha256': source_hash,
+                        'info': info, 'rules': asdict(rules), 'target_duration': target_duration})
+    cache_path = cache_dir / 'analysis' / f'{key}.json' if cache_dir is not None else None
+    cached = read_cache(cache_path, key) if cache_path is not None else None
+    analyzer = EpisodeAnalyzer(table, info, rules)
+    if cached is not None:
+        try:
+            selected = np.asarray(cached['selected'], dtype=np.int64)
+            phase_ids = np.asarray(cached['phase_ids'], dtype=np.int64)
+            report = cached['report']
+            if 'rules' in report:
+                report['rules'] = asdict(rules)
+            if (len(selected) and selected[0] >= 0 and selected[-1] < table.num_rows
+                    and np.all(np.diff(selected) > 0) and len(phase_ids) == table.num_rows
+                    and report['source_parquet_sha256'] == source_hash
+                    and report.get('selected_source_frames', selected.tolist()) == selected.tolist()
+                    and report['output_frames'] == len(selected)):
+                return EpisodeRecord(source, table, source_episode, analyzer,
+                                     EpisodePlan(selected, report, phase_ids), source_hash, cache_hit=True)
+        except (KeyError, ValueError, TypeError):
+            pass
+    try:
+        plan = analyzer.plan(include_smooth=False)
+    except ValueError as error:
+        selected = np.arange(table.num_rows, dtype=np.int64)
+        plan = EpisodePlan(selected=selected, phase_ids=np.zeros(table.num_rows, dtype=int),
+                           report={'source_frames': table.num_rows, 'output_frames': table.num_rows,
+                                   'first_source_frame': 0, 'phases': [], 'status': 'unchanged_fallback',
+                                   'reason': str(error)})
+    if target_duration is not None:
+        plan = DurationNormalizer(analyzer).apply(plan, target_duration)
+    plan = analyzer.smooth_plan(plan)
+    selected = np.asarray(plan.selected, dtype=np.int64)
+    if (not len(selected) or selected[0] < 0 or selected[-1] >= table.num_rows
+            or np.any(np.diff(selected) <= 0) or len(plan.phase_ids) != table.num_rows):
+        raise ValueError(f'选帧算法返回了无效来源映射：{source}')
+    plan.report.update(source=str(source), source_episode=source_episode, source_parquet_sha256=source_hash)
+    if sha256(source) != source_hash:
+        raise ValueError(f'分析期间源文件改变：{source}')
+    if cache_path is not None:
+        write_cache(cache_path, key, {'selected': selected.tolist(), 'phase_ids': plan.phase_ids.tolist(),
+                                     'report': plan.report})
+    return EpisodeRecord(source, table, source_episode, analyzer, plan, source_hash)
+
+
 # 数据集构建器
 class DatasetBuilder:
     # 只接受源数据集外的真实输出目录，禁止覆盖源数据及其祖先。
-    def __init__(self, root, output, rules, source_paths=None, episode=0, all_episodes=False, video_keys=None, target_duration=None, workers=1):
+    def __init__(self, root, output, rules, source_paths=None, episode=0, all_episodes=False, video_keys=None, target_duration=None, workers=16, use_cache=True):
         self.root = Path(root).resolve()
         self.output = Path(output).absolute()
         resolved = self.output.resolve()
         if (self.output.is_symlink() or resolved == self.root or resolved.is_relative_to(self.root)
                 or self.root.is_relative_to(resolved)):
             raise ValueError('输出必须是源数据集之外的独立目录，不能通过符号链接覆盖源数据')
+        self.cache_dir = self.output.parent / '.reconstruct-cache' / self.root.name if use_cache else None
         self.rules = rules
         self.workers = workers
         if not isinstance(workers, int) or workers < 1:
-            raise ValueError('视频并发数必须为正整数')
+            raise ValueError('分析和视频并发数必须为正整数')
         self.target_duration = target_duration
         if target_duration is not None and (not np.isfinite(target_duration) or target_duration <= 0):
             raise ValueError('目标时长必须为有限正数')
@@ -1413,40 +1583,70 @@ class DatasetBuilder:
         if any(not path.is_relative_to(self.root) for path in self.sources):
             raise ValueError('源 parquet 必须位于指定数据集内')
 
-    # 仅优化失败允许原样回退；无法读取 parquet 或缺失元数据不得伪造成功。
+    # 单进程调试入口与子进程共用分析函数。
+    def analyze_episode(self, source):
+        return analyze_source_episode(source, self.info, self.rules, self.target_duration, self.cache_dir)
+
+    # 进程隔离绕过 GIL；每十秒提示存活状态，Ctrl+C 会结束所属分析子进程。
     def analyze(self):
         records = []
-        for source in self.sources:
-            source_hash = sha256(source)
-            table = pq.read_table(source)
-            if table.num_rows < 1:
-                raise ValueError(f'空 episode：{source}')
-            source_episodes = set(table['episode_index'].to_pylist())
-            if len(source_episodes) != 1:
-                raise ValueError(f'一个 parquet 只能包含一个 episode：{source}')
-            source_episode = int(next(iter(source_episodes)))
-            if table['frame_index'].to_pylist() != list(range(table.num_rows)):
-                raise ValueError(f'源 frame_index 必须从 0 连续编号：{source}')
-            analyzer = EpisodeAnalyzer(table, self.info, self.rules)
+        count = min(self.workers, len(self.sources))
+        self.analysis_worker_pids = set()
+        if not count:
+            return records
+        started = time.monotonic()
+        print(f'开始分析 {len(self.sources)} 个 episode，工作进程 {count}', file=sys.stderr, flush=True)
+        if count == 1:
+            for source in self.sources:
+                try:
+                    record = self.analyze_episode(source)
+                except Exception as error:
+                    error.add_note(f'分析源文件：{source}')
+                    raise
+                records.append(record)
+                self.analysis_worker_pids.add(os.getpid())
+                print(f'分析 {len(records)}/{len(self.sources)}: episode {record.source_episode}, '
+                      f'{record.table.num_rows} -> {len(record.plan.selected)} 帧'
+                      f'{"（缓存）" if record.cache_hit else ""}', file=sys.stderr, flush=True)
+        else:
+            # spawn 前设置环境，保证 NumPy 导入时已限制 BLAS/OpenMP，启动后恢复父进程环境。
+            names = ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS',
+                     'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS', 'BLIS_NUM_THREADS')
+            previous = {name: os.environ.get(name) for name in names}
+            previous_pids = {process.pid for process in mp.active_children()}
             try:
-                plan = analyzer.plan(include_smooth=False)
-            except ValueError as error:
-                selected = np.arange(table.num_rows, dtype=np.int64)
-                plan = EpisodePlan(selected=selected, phase_ids=np.zeros(table.num_rows, dtype=int),
-                                   report={'source_frames': table.num_rows, 'output_frames': table.num_rows,
-                                           'first_source_frame': 0, 'phases': [], 'status': 'unchanged_fallback',
-                                           'reason': str(error)})
-            if self.target_duration is not None:
-                plan = DurationNormalizer(analyzer).apply(plan, self.target_duration)
-            plan = analyzer.smooth_plan(plan)
-            selected = np.asarray(plan.selected, dtype=np.int64)
-            if (not len(selected) or selected[0] < 0 or selected[-1] >= table.num_rows
-                    or np.any(np.diff(selected) <= 0) or len(plan.phase_ids) != table.num_rows):
-                raise ValueError(f'选帧算法返回了无效来源映射：{source}')
-            plan.report.update(source=str(source), source_episode=source_episode, source_parquet_sha256=source_hash)
-            records.append(EpisodeRecord(source, table, source_episode, analyzer, plan, source_hash))
-            if len(self.sources) > 1:
-                print(f'分析 {len(records)}/{len(self.sources)}: episode {source_episode}, {table.num_rows} -> {len(selected)} 帧', file=sys.stderr, flush=True)
+                os.environ.update(dict.fromkeys(names, '1'))
+                pool = mp.get_context('spawn').Pool(count, initializer=init_analysis_worker,
+                                                  initargs=(self.info, self.rules, self.target_duration, self.cache_dir))
+            finally:
+                for name, value in previous.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+            with pool:
+                analysis_processes = [process for process in mp.active_children()
+                                      if process.pid not in previous_pids]
+                pending = pool.imap_unordered(run_analysis_worker, self.sources, chunksize=1)
+                while len(records) < len(self.sources):
+                    # Pool 会自动补建崩溃进程，但丢失的任务不会重发；检测后立即失败避免无限等待。
+                    dead = [(process.pid, process.exitcode) for process in analysis_processes
+                            if process.exitcode is not None]
+                    if dead:
+                        raise RuntimeError(f'分析子进程异常退出：{dead}；已完成缓存保留，修复后重跑')
+                    try:
+                        record, pid = pending.next(timeout=10)
+                    except mp.TimeoutError:
+                        print(f'分析进行中 {len(records)}/{len(self.sources)}，'
+                              f'耗时 {time.monotonic()-started:.0f}s；等待正在计算的 episode',
+                              file=sys.stderr, flush=True)
+                        continue
+                    records.append(record)
+                    self.analysis_worker_pids.add(pid)
+                    print(f'分析 {len(records)}/{len(self.sources)}: episode {record.source_episode}, '
+                          f'{record.table.num_rows} -> {len(record.plan.selected)} 帧，'
+                          f'耗时 {time.monotonic()-started:.1f}s'
+                          f'{"（缓存）" if record.cache_hit else ""}', file=sys.stderr, flush=True)
         records.sort(key=lambda record: record.source_episode)
         if len({record.source_episode for record in records}) != len(records):
             raise ValueError('同一数据集重复提交了 episode')
@@ -1600,6 +1800,8 @@ class DatasetBuilder:
     def comparison(self, folder, records, reference):
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
+        comparison_dir = folder / 'vs'
+        comparison_dir.mkdir(parents=True, exist_ok=True)
         reference_rows = []
         if reference is not None and (reference / 'source_frame_map.csv').is_file():
             with (reference / 'source_frame_map.csv').open(encoding='utf-8', newline='') as stream:
@@ -1650,7 +1852,7 @@ class DatasetBuilder:
             fig.update_layout(height=950, title=f'源 episode {record.source_episode} · 通用五阶段重构 · 原始坐标镜像 X/Y 显示',
                               scene={'aspectmode': 'data'}, scene2={'aspectmode': 'data'})
             filename = 'comparison.html' if len(records) == 1 else f'comparison_episode_{output_episode:06d}.html'
-            fig.write_html(folder / filename, include_plotlyjs=True)
+            fig.write_html(comparison_dir / filename, include_plotlyjs=True)
             record.plan.report['effect_comparison'] = comparison
             record.plan.report['reference_used_for_selection'] = False
 
@@ -1659,7 +1861,7 @@ class DatasetBuilder:
         self.output.parent.mkdir(parents=True, exist_ok=True)
         reference = snapshot_reference(self.output)
         with tempfile.TemporaryDirectory(prefix='.reconstruct-', dir=self.output.parent) as temporary, \
-                ThreadPoolExecutor(max_workers=self.workers) as pool:
+                video_executor(self.workers) as pool:
             folder = Path(temporary) / 'result'
             folder.mkdir()
             global_index, tables, reports = 0, [], []
@@ -1697,7 +1899,7 @@ class DatasetBuilder:
                         video = self.root / self.info['video_path'].format(episode_chunk=record.source_episode // self.chunk_size,
                                                                           episode_index=record.source_episode, video_key=key)
                         destination = folder / f'videos/chunk-{chunk:03d}' / key / f'episode_{number:06d}.mp4'
-                        job = pool.submit(rewrite_video, video, destination, selected, self.fps)
+                        job = pool.submit(rewrite_video_cached, video, destination, selected, self.fps, self.cache_dir)
                         video_jobs[job] = (record, key)
                     writer.writerows((number, record.source_episode, i, int(source_frame), i / self.fps,
                                       record.table['timestamp'][int(source_frame)].as_py(), int(record.plan.phase_ids[source_frame]))
@@ -1728,7 +1930,9 @@ class DatasetBuilder:
                     for pending in video_jobs:
                         pending.cancel()
                     raise
-                print(f'视频验证 {completed}/{len(video_jobs)}: episode {record.source_episode}, {key}', flush=True)
+                hit = record.plan.report['videos'][key].get('cache_hit', False)
+                print(f'视频验证 {completed}/{len(video_jobs)}: episode {record.source_episode}, {key}'
+                      f'{"（缓存）" if hit else ""}', flush=True)
             for record in records:
                 if sha256(record.source) != record.source_hash:
                     raise ValueError(f'视频编码期间源 parquet 发生改变：{record.source}')
@@ -1762,9 +1966,10 @@ def main():
     parser.add_argument('--rules-json', type=Path)
     parser.add_argument('--target-duration', type=float, metavar='SECONDS',
                         help='在位姿步长和完整事件约束下向共同目标时长优化；不指定时沿用原选帧规则')
-    parser.add_argument('--workers', type=int, default=1, help='视频重建并发数，默认1')
+    parser.add_argument('--workers', type=int, default=16, help='分析进程数/视频编码并发数，默认16；设为1串行执行')
     parser.add_argument('--video', nargs='+', action='extend', metavar='VIDEO_KEY',
                         help='只生成指定视频视角，支持多个名称或重复 --video；不指定时生成全部视角')
+    parser.add_argument('--no-cache', action='store_true', help='禁用分析和已验证视频缓存；默认缓存支持中断后复用')
     parser.add_argument('--plan-only', action='store_true')
     args = parser.parse_args()
     if args.source_parquet and (args.all_episodes or args.episode is not None):
@@ -1795,11 +2000,13 @@ def main():
         outputs.add(output.resolve())
         roots.add(root.resolve())
         builders.append(DatasetBuilder(root, output, rules, paths, args.episode or 0, args.all_episodes,
-                                       video_keys=args.video, target_duration=args.target_duration, workers=args.workers))
+                                       video_keys=args.video, target_duration=args.target_duration, workers=args.workers,
+                                       use_cache=not (args.no_cache or args.plan_only)))
     for output in outputs:
         if any(output == root or output.is_relative_to(root) or root.is_relative_to(output) for root in roots):
             parser.error('任何输出都不能覆盖本次提交的其他源数据集')
-    for builder in builders:
+    for number, builder in enumerate(builders, 1):
+        print(f'数据集 {number}/{len(builders)} 开始：{builder.root}', file=sys.stderr, flush=True)
         records = builder.analyze()
         if args.plan_only:
             results.append({'source_root': str(builder.root), 'output': str(builder.output), 'rules': asdict(rules),
@@ -1810,6 +2017,7 @@ def main():
                             'episodes': [row.plan.report for row in records]})
         else:
             results.append(builder.build(records))
+            print(f'数据集 {number}/{len(builders)} 已验证并发布：{builder.output}', file=sys.stderr, flush=True)
     print(json.dumps(results[0] if len(results) == 1 else results, ensure_ascii=False, indent=2, allow_nan=False))
 
 
