@@ -13,7 +13,21 @@
   </p>
 </div>
 
-支持 LeRobot v2.1 中等长位姿向量与独立 MP4 的同步查看，内置 H01、EBench、Robocasa365 类别及自定义字段映射。
+支持 LeRobot v2.1 中等长位姿向量与独立 MP4 的同步查看，内置 H01、RoboDojo、EBench、Robocasa365、RoboTwin2 类别及自定义字段映射。
+
+## 已支持的评测数据集演示
+
+公开页面内置以下评测数据集的 episode 0 示例：
+
+| 类别 | 位置字段 | 视频键 | 示例信息 |
+| --- | --- | --- | --- |
+| H01 | `observation.state_endpose_quat` | `observation.images.cam_fisheye_front` | 783 帧，30 Hz |
+| RoboDojo | `observation.state` | `observation.images.cam_high` | 579 帧，25 Hz |
+| Ebench | `state.ee_pose` | `video.overlook_camera_view` | 3324 帧，15 Hz |
+| Robocasa365 | `observation.state` | `observation.images.robot0_agentview_right` | 1272 帧，20 Hz，单臂 |
+| RoboTwin2 | `observation.state` | `observation.images.cam_high` | 462 帧，50 Hz |
+
+这些示例用于演示轨迹、视频、速度曲线和单臂/双臂同步查看；完整数据集不随网页发布。
 
 - **浏览器导入：** 选择数据集目录并指定 Episode，自动匹配视频和 FPS；也可通过弹窗分别选择 parquet 和 MP4。
 - **同步查看：** 完整轨迹、逐帧点、播放进度高亮、速度曲线、倍速与点选跳转。
@@ -34,6 +48,8 @@
 
 ## 轨迹查看
 
+公开网页首次打开会自动加载仓库内置的 `example` episode 0，无需先选择本地目录；也可以点击“数据集目录”选择自己的 LeRobot 数据集。
+
 ```bash
 pip install fastapi 'pydantic>=2' uvicorn pyarrow numpy scipy plotly pyyaml
 
@@ -50,7 +66,7 @@ python ee_video_viewer.py
 
 # 工作脚本
 python reconstruct_dataset.py \
-  --source-root $WORKDIR/洗碗机/COL26071359B_rect11 \
+  --source-root $WORKDIR/COL26071359B_rect11 \
   --all-episodes \
   --target-duration 24 \
   --workers 16

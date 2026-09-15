@@ -5,6 +5,7 @@ const video = $('video'), scrub = $('scrub');
 const ARMS = { right: { name: '右臂', color: '#78a6d8', light: '#b8cff0', base: 0 }, left: { name: '左臂', color: '#c88768', light: '#e4ae92', base: 3 } }; // 本体左右语义。
 let d = null, cache = {}, ready = false, generation = 0, controller = null;
 let work = Promise.resolve(), pendingFrame = null, rendering = false, lastFrame = -1, clock = null, armView = 'both';
+let rotating = false; // 鼠标拖动期间保留最新帧，避免重建 WebGL 数据打断相机交互。
 
 let mediaRelease = null;
 // 仅使用大于 0 的有限速度；首帧和全静止序列没有有效统计值。
@@ -128,15 +129,26 @@ function traces(arm) {
     ];
 }
 
-// 数据加载时初始化，重载也重新绑定点选事件。
+// 鼠标操作只更新了 WebGL 相机时，将事件快照同步给下一次 restyle 使用的布局。
+function rememberCamera(event) {
+    const camera = event['scene.camera'];
+    if (camera) $('plot').layout.scene.camera = structuredClone(camera);
+}
+
+// 数据加载时初始化，重载只绑定一份相机和点选监听器。
 async function draw() {
     const plot = $('plot'), camera = plot.layout?.scene?.camera;
     plot.removeAllListeners?.('plotly_click');
+    plot.removeListener?.('plotly_relayouting', rememberCamera);
+    plot.removeListener?.('plotly_relayout', rememberCamera);
     await Plotly.react(plot, Object.keys(ARMS).flatMap(traces), {
         uirevision: 'ee-trajectory-camera', paper_bgcolor: '#fffaf5', font: { color: '#262421' }, margin: { l: 0, r: 0, t: 30, b: 0 },
         scene: { aspectmode: 'data', ...(camera ? { camera } : {}), xaxis: { title: { text: 'X (m)' } }, yaxis: { title: { text: 'Y (m)' } }, zaxis: { title: { text: 'Z (m)' } } },
     }, { responsive: true, displaylogo: false });
     plot.on('plotly_click', clicked);
+    // 拖动过程中也同步，播放与旋转同时发生时不会使用上一次松手的视角。
+    plot.on('plotly_relayouting', rememberCamera);
+    plot.on('plotly_relayout', rememberCamera);
     for (const arm of Object.keys(ARMS)) {
         const a = ARMS[arm], c = cache[arm], chart = $(`speed-chart-${arm}`);
         const series = [
@@ -168,10 +180,10 @@ function clicked(event) {
 function render(frame) {
     if (!ready || !Number.isInteger(frame) || frame === lastFrame) return;
     pendingFrame = frame;
-    if (rendering) return;
+    if (rendering || rotating) return;
     rendering = true;
     schedule(async () => {
-        if (!ready || pendingFrame === null) return;
+        if (!ready || rotating || pendingFrame === null) return;
         const f = pendingFrame; pendingFrame = null;
         // 只更新轨迹数据，保留用户最新相机，不写回异步绘图前的旧视角。
         const update = { x: [], y: [], z: [], customdata: [] }, indices = [], speeds = [];
@@ -187,8 +199,15 @@ function render(frame) {
         lastFrame = f; scrub.value = f;
         $('frame').textContent = d.source_frames ? `输出帧 ${f}/${d.frames - 1} · 原始帧 ${d.source_frames[f]}` : `frame ${f}/${d.frames - 1}`;
         $('time').textContent = `${(f / d.fps).toFixed(3)} s`;
-    }).catch(() => {}).finally(() => { rendering = false; if (ready && pendingFrame !== null) render(pendingFrame); });
+    }).catch(() => {}).finally(() => { rendering = false; if (ready && !rotating && pendingFrame !== null) render(pendingFrame); });
 }
+
+// 视频继续播放，松开鼠标后轨迹直接追上最新帧，不逐帧补画。
+$('plot').addEventListener('pointerdown', () => { rotating = true; }, { capture: true });
+for (const name of ['pointerup', 'pointercancel', 'blur']) window.addEventListener(name, () => {
+    rotating = false;
+    if (ready && pendingFrame !== null) render(pendingFrame);
+});
 
 // 坐标轴和相机保持原样，仅切换图层可见性。
 async function applyArmView() {

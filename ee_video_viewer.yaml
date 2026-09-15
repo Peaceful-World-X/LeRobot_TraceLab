@@ -6,14 +6,26 @@ profiles:
     lr_xyz_indices: [0, 1, 2, 8, 9, 10]
     lr_xyz_direction: [-1, -1, 1, -1, -1, 1]
 
+  RoboDojo:
+    video_key: observation.images.cam_high
+    arms_key: observation.state
+    lr_xyz_indices: [0, 1, 2, 8, 9, 10]
+    lr_xyz_direction: [1, 1, 1, 1, 1, 1]
+
   Ebench:
     video_key: video.overlook_camera_view
     arms_key: state.ee_pose
-    lr_xyz_indices: [0, 1, 2, 7, 8, 9]
-    lr_xyz_direction: [1, 1, 1, 1, 1, 1]
+    lr_xyz_indices: [7, 8, 9, 0, 1, 2]
+    lr_xyz_direction: [-1, -1, 1, -1, -1, 1]
 
   Robocasa365:
-    video_key: observation.images.robot0_agentview_left
+    video_key: observation.images.robot0_agentview_right
     arms_key: observation.state
     lr_xyz_indices: [7, 8, 9, 7, 8, 9]
+    lr_xyz_direction: [1, 1, 1, 1, 1, 1]
+
+  RoboTwin2:
+    video_key: observation.images.cam_high
+    arms_key: observation.state
+    lr_xyz_indices: [0, 1, 2, 8, 9, 10]
     lr_xyz_direction: [1, 1, 1, 1, 1, 1]

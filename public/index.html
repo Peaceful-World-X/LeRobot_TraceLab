@@ -9,7 +9,7 @@
     <link rel="apple-touch-icon" href="assets/h01-tracelab-avatar-robot-transparent.png">
     <script src="assets/plotly.min.js" defer></script>
     <link rel="stylesheet" href="assets/viewer.css">
-    <script src="assets/viewer-core.js" defer></script>
+    <script src="assets/viewer-core.js?v=7271c5bfb2db" defer></script>
     <style>
         /* 控件采用包含边框的尺寸，避免文件框和弹窗输入撑出布局。 */
         .public-header, .public-header *, .manual-import-dialog, .manual-import-dialog * { box-sizing: border-box; }
@@ -19,6 +19,7 @@
         .public-header label { display: inline-flex; align-items: center; gap: 8px; margin: 0; height: 38px; white-space: nowrap; }
         .public-header select, .public-header input, .public-header button { height: 38px; min-width: 0; font: inherit; border-radius: 6px; }
         #profile-input { width: 140px; padding: 0 24px 0 10px; }
+        #edit-custom-profile[hidden] { display: none; }
         .public-header .directory-label { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
         .directory-label span { font-size: 13px; }
         #directory-input { display: flex; align-items: center; gap: 8px; width: 0; min-width: 0; padding: 0 10px; flex: 1 1 0; border: 1px solid #9b8b7e; background: #fffaf5; color: #514238; text-align: left; }
@@ -68,6 +69,8 @@
     <header class="public-header">
         <div><b>LeRobot TraceLab</b><span class="public-subtitle"></span></div>
         <label class="profile-label">类别 <select id="profile-input" aria-label="机器人类别"><option value="H01">H01</option><option value="Ebench">EBench</option><option value="Robocasa365">Robocasa365</option><option value="__custom__">自定义</option></select></label>
+        <button id="edit-custom-profile" type="button" hidden>编辑配置</button>
+        <button id="example-button" type="button">查看示例</button>
         <div class="directory-label"><span>数据集目录</span><button id="directory-input" type="button" title="按需读取指定 Episode"><span id="directory-name">选择目录</span></button></div>
         <button id="manual-import-button" class="manual-import-button" type="button">▸ 单独导入 parquet + 视频</button>
         <label class="episode-label" for="episode-input">Episode <input id="episode-input" type="number" min="0" step="1" value="0" aria-label="Episode 序号"></label>
@@ -90,7 +93,6 @@
             <label>Parquet <input id="parquet-input" type="file" accept=".parquet,application/octet-stream"></label>
             <label>视频 MP4 <input id="video-input" type="file" accept="video/mp4,.mp4"></label>
             <label>来源映射（可选）<input id="mapping-input" type="file" accept=".csv"></label>
-            <label>FPS <input id="fps-input" type="number" min="1" max="240" step="0.01" value="30" title="目录模式会自动从 meta/info.json 读取"></label>
             <div class="manual-dialog-actions"><button type="button" onclick="document.getElementById('manual-import-dialog').close()">取消</button><button id="manual-confirm-button" type="button">使用这些文件</button></div>
         </form>
     </dialog>
@@ -103,7 +105,10 @@
                 <label for="custom-arms-key">位置字段</label><input id="custom-arms-key" placeholder="observation.state_endpose_quat">
                 <label for="custom-indices">左右 XYZ 索引</label><input id="custom-indices" placeholder="0,1,2,8,9,10">
                 <label for="custom-direction">方向系数</label><input id="custom-direction" placeholder="-1,-1,1,-1,-1,1">
+                <label for="custom-fps">采样频率 FPS</label><input id="custom-fps" type="number" min="0.001" step="any" placeholder="留空自动读取，例如 30" aria-describedby="custom-fps-help">
             </div>
+            <p id="custom-fps-help">填写数据的实际采样频率（Hz），不是播放倍速。留空时优先读取目录元数据；单独导入则从 Parquet 时间戳推算。</p>
+            <p id="custom-profile-error" role="alert" class="error"></p>
             <div class="manual-dialog-actions"><button type="button" onclick="document.getElementById('profile-dialog').close()">取消</button><button id="custom-profile-confirm" type="button">保存并使用</button></div>
         </form>
     </dialog>
@@ -134,6 +139,6 @@
                 </select></div>
         </div>
     </section>
-    <script src="assets/h01-viewer-public.js" defer></script>
+    <script src="assets/h01-viewer-public.js?v=aa79acdfd106" defer></script>
 </body>
 </html>
