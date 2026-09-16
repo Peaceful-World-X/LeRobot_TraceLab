@@ -35,11 +35,13 @@ class ReaderModel(BaseModel):
 
 
 class ProfileConfig(ReaderModel):
-    """每个类别只声明视频键、位姿键、左右 XYZ 索引和方向。"""
+    """声明字段映射及可选显示偏移，位置按原值乘方向后加偏移计算。"""
     video_key: str = Field(min_length=1)
     arms_key: str = Field(min_length=1)
     lr_xyz_indices: tuple[int, int, int, int, int, int]
     lr_xyz_direction: tuple[float, float, float, float, float, float]
+    lr_xyz_offset: tuple[float, float, float, float, float, float] = (0, 0, 0, 0, 0, 0)
+    lr_grip_offset: tuple[float, float, float, float, float, float] = (0, 0, 0, 0, 0, 0)
 
     @field_validator("lr_xyz_indices")
     @classmethod
@@ -63,12 +65,36 @@ class ViewerConfig(ReaderModel):
     profiles: dict[str, ProfileConfig] = Field(min_length=1)
 
 
-class ProfileUpdate(ReaderModel):
-    """网页自定义类别时允许修改的四个字段。"""
-    video_key: str = Field(min_length=1)
-    arms_key: str = Field(min_length=1)
-    lr_xyz_indices: tuple[int, int, int, int, int, int]
-    lr_xyz_direction: tuple[float, float, float, float, float, float]
+class ProfileUpdate(ProfileConfig):
+    """接受字段映射及可选显示偏移，旧客户端可省略偏移。"""
+
+
+# 从位置分量的命名前缀识别同一末端的四元数；未知布局不猜测。
+def rotation_columns(feature, field, xyz_columns, width):
+    names = feature.get("names")
+    if isinstance(names, list) and len(names) == 1 and isinstance(names[0], list):
+        names = names[0]
+    if isinstance(names, list) and len(names) == width and all(isinstance(n, str) for n in names):
+        x, y, z = (names[i] for i in xyz_columns)
+        if x.endswith("x") and [x[:-1] + axis for axis in "xyz"] == [x, y, z]:
+            stem = x[:-1]
+            candidates = [[stem + "q" + axis for axis in "xyzw"],
+                          [stem + "quat_" + axis for axis in "xyzw"],
+                          [stem + axis for axis in ("i", "j", "k", "w")],
+                          [stem + axis for axis in ("wx", "wy", "wz", "w")]]
+            if stem.endswith("pos_"):
+                candidates.append([stem[:-4] + "quat_" + axis for axis in "xyzw"])
+            for candidate in candidates:
+                if all(names.count(n) == 1 for n in candidate):
+                    return [names.index(n) for n in candidate]
+        raise ValueError("无法从位姿分量名称识别四元数；请将夹爪偏移留空")
+    start = xyz_columns[0]
+    if tuple(xyz_columns) == (start, start + 1, start + 2):
+        if field == "state.ee_pose" and width == 14 and start in (0, 7):
+            return [start + i for i in (4, 5, 6, 3)]
+        if field in ("observation.state_endpose_quat", "observation.state_tcp_endpose_quat") and width == 16 and start in (0, 8):
+            return [start + i for i in (3, 4, 5, 6)]
+    raise ValueError("缺少可识别的末端姿态布局；请将夹爪偏移留空")
 
 
 def read_config() -> ViewerConfig:
@@ -111,7 +137,8 @@ def update_profile_config(profile: str = Query(..., min_length=1, max_length=128
     if any(v not in (-1, 1) for v in update.lr_xyz_direction):
         raise HTTPException(422, "方向系数必须只包含 -1 或 1")
     raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
-    raw.setdefault("profiles", {})[profile] = update.model_dump()
+    # 旧配置弹窗不提交偏移时，保留 YAML 中已有的安装偏移。
+    raw.setdefault("profiles", {}).setdefault(profile, {}).update(update.model_dump(exclude_unset=True))
     try:
         ViewerConfig.model_validate(raw)
         temp = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + ".tmp")
@@ -233,7 +260,22 @@ def episode(
         values = np.asarray(table[spec.arms_key].to_pylist(), dtype=float)
         if values.ndim != 2 or values.shape[1] <= max(spec.lr_xyz_indices):
             raise HTTPException(422, f"{spec.arms_key} 维度不足，无法读取 XYZ 索引 {spec.lr_xyz_indices}")
-        xyz = values[:, spec.lr_xyz_indices] * spec.lr_xyz_direction
+        xyz = values[:, spec.lr_xyz_indices].copy()
+        if any(spec.lr_grip_offset):
+            for arm in range(2):
+                if not any(spec.lr_grip_offset[arm * 3:arm * 3 + 3]):
+                    continue
+                columns = rotation_columns(info.get("features", {}).get(spec.arms_key, {}), spec.arms_key,
+                                           spec.lr_xyz_indices[arm * 3:arm * 3 + 3], values.shape[1])
+                q = values[:, columns]
+                norm = np.linalg.norm(q, axis=1, keepdims=True)
+                if not np.isfinite(q).all() or np.any(norm < 1e-8):
+                    raise ValueError("工具变换需要有限且非零的四元数")
+                q = q / norm
+                offset = np.asarray(spec.lr_grip_offset[arm * 3:arm * 3 + 3])
+                cross = 2 * np.cross(q[:, :3], offset)
+                xyz[:, arm * 3:arm * 3 + 3] += offset + q[:, 3:4] * cross + np.cross(q[:, :3], cross)
+        xyz = xyz * spec.lr_xyz_direction + spec.lr_xyz_offset
         left, right = xyz[:, :3], xyz[:, 3:]
         left_speed = np.linalg.norm(np.diff(left, axis=0), axis=1) * fps
         right_speed = np.linalg.norm(np.diff(right, axis=0), axis=1) * fps
@@ -249,7 +291,8 @@ def episode(
                 MEDIA.popitem(last=False)
         return {
             "profile": profile_name,
-            "single_arm": spec.lr_xyz_indices[:3] == spec.lr_xyz_indices[3:] and spec.lr_xyz_direction[:3] == spec.lr_xyz_direction[3:],
+            "point_label": "工具点" if any(spec.lr_grip_offset) else "EE",
+            "single_arm": spec.lr_xyz_indices[:3] == spec.lr_xyz_indices[3:] and spec.lr_xyz_direction[:3] == spec.lr_xyz_direction[3:] and spec.lr_xyz_offset[:3] == spec.lr_xyz_offset[3:] and spec.lr_grip_offset[:3] == spec.lr_grip_offset[3:],
             "episode": number, "fps": fps, "frames": frames, "duration": frames / fps,
             "video_url": f"api/video/{token}", "left": left.tolist(), "right": right.tolist(),
             "left_speed": [None, *left_speed.tolist()], "right_speed": [None, *right_speed.tolist()],

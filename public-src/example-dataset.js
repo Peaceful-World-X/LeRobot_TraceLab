@@ -21,5 +21,5 @@ export async function openExample(root, number, videoKey, signal) {
   ])
   signal?.throwIfAborted()
   const videoUrl = new URL(`videos/${chunk}/${encodeURIComponent(videoKey)}/${stem}.mp4`, base).href
-  return { parquet, video: null, video_url: videoUrl, mapping: null, fps, multiEpisode: Number(info.total_episodes) !== 1 }
+  return { parquet, video: null, video_url: videoUrl, mapping: null, fps, features: info.features, multiEpisode: Number(info.total_episodes) !== 1 }
 }

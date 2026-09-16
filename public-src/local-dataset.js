@@ -58,7 +58,7 @@ export async function openEpisode(root, number, videoKey, signal) {
     signal?.throwIfAborted()
     const mapping = await optionalFile(root, 'source_frame_map.csv')
     signal?.throwIfAborted()
-    return { parquet, video, mapping, fps, multiEpisode: Number(info.total_episodes) !== 1 }
+    return { parquet, video, mapping, fps, features: info.features, multiEpisode: Number(info.total_episodes) !== 1 }
   } catch (error) {
     if (error.name === 'NotFoundError') throw new Error(`episode ${number} 文件不完整，请检查目录和相机类别`)
     if (error.name === 'NotAllowedError') throw new Error('目录读取权限已失效，请重新选择目录')

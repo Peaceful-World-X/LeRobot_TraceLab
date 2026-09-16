@@ -14,10 +14,13 @@
 <body>
     <header><label for="profile">类别</label><select id="profile" aria-label="机器人类别" disabled></select><b>数据集目录</b><input id="path"
             placeholder="例如 /mnt/.../COL26071359B_rect11" aria-label="数据集总目录"><label>Episode</label><input id="episode-index" type="number" min="0" step="1" value="0" aria-label="episode 序号" style="flex:0 0 90px;min-width:0"><button
-            id="load-button" disabled onclick="loadEpisode()">加载</button><span id="status" role="status" aria-live="polite"></span></header>
+            id="load-button" disabled onclick="loadEpisode()">加载</button><button id="edit-custom-config" hidden onclick="toggleConfig()">编辑配置</button><span id="status" role="status" aria-live="polite"></span></header>
     <dialog id="config-box" class="config-box"><b>自定义类别配置</b><p style="font-size:12px;color:#62584f">配置仅保存在当前浏览器，不会写入服务器 YAML。数组必须填写 6 个数字，前 3 个是左臂 XYZ，后 3 个是右臂 XYZ。</p><table style="width:100%;font-size:12px;margin:10px 0 14px;border-collapse:collapse"><tr><th style="text-align:left">参数</th><th style="text-align:left">填写说明</th></tr><tr><td>video_key</td><td>视频目录名称，例如 observation.images.cam_high</td></tr><tr><td>arms_key</td><td>Parquet 中的位置或状态字段名称</td></tr><tr><td>lr_xyz_indices</td><td>6 个索引，例如 0,1,2,8,9,10</td></tr><tr><td>lr_xyz_direction</td><td>6 个方向系数，只能填写 1 或 -1</td></tr></table><div class="config-grid">
         <label for="cfg-video">video_key</label><input id="cfg-video"><label for="cfg-arms">arms_key</label><input id="cfg-arms">
         <label for="cfg-indices">lr_xyz_indices</label><input id="cfg-indices" placeholder="0,1,2,8,9,10"><label for="cfg-direction">lr_xyz_direction</label><input id="cfg-direction" placeholder="-1,-1,1,-1,-1,1">
+        <label for="cfg-offset">位置偏移<br>（可选，米）</label><input id="cfg-offset" placeholder="留空为 0；左 XYZ、右 XYZ">
+        <label for="cfg-grip-offset">夹爪局部偏移<br>（可选，米）</label><input id="cfg-grip-offset" placeholder="留空显示原 EE；左 XYZ、右 XYZ">
+        <p style="grid-column:1/-1">位置偏移在方向变换后相加。夹爪局部偏移随姿态旋转，用于从腕部换算到夹爪前端，姿态从位姿字段自动识别。留空均为零。</p>
         <span></span><button type="button" onclick="saveProfileConfig()">保存配置</button><button type="button" onclick="$('config-box').close()">取消</button><span id="config-status" role="status"></span>
     </div></dialog>
     <main class="layout">
@@ -51,17 +54,21 @@
 const $ = id => document.getElementById(id);
 let viewer;
 function message(text, error=false) { $('status').textContent=text; $('status').className=error?'error':''; }
-function toggleConfig() { $('config-box').showModal(); loadProfileConfig($('profile').dataset.customSource || 'H01'); }
+function toggleConfig() { $('config-status').textContent = ''; $('config-box').showModal(); loadProfileConfig('__custom__'); }
 async function loadProfileConfig() {
     const name = arguments[0] || $('profile').value; if (!name) return;
-    if (name === '__custom__') { try { const c = JSON.parse(localStorage.getItem('ee-viewer-custom-config') || '{}'); $('cfg-video').value=c.video_key||''; $('cfg-arms').value=c.arms_key||''; $('cfg-indices').value=(c.lr_xyz_indices||[]).join(','); $('cfg-direction').value=(c.lr_xyz_direction||[]).join(','); } catch {} return; }
+    if (name === '__custom__') { try { const saved = localStorage.getItem('ee-viewer-custom-config'); if (!saved) return loadProfileConfig($('profile').dataset.customSource || $('profile').options[0].value); const c = JSON.parse(saved); $('cfg-video').value=c.video_key||''; $('cfg-arms').value=c.arms_key||''; $('cfg-indices').value=(c.lr_xyz_indices||[]).join(','); $('cfg-direction').value=(c.lr_xyz_direction||[]).join(','); $('cfg-offset').value=(c.lr_xyz_offset||[]).join(','); $('cfg-grip-offset').value=(c.lr_grip_offset||[]).join(','); } catch {} return; }
     try { const r = await fetch(`api/profile-config?${new URLSearchParams({ profile: name })}`, { cache: 'no-store' }); const c = await r.json(); if (!r.ok) throw new Error(c.detail || '配置读取失败');
         $('cfg-video').value = c.video_key; $('cfg-arms').value = c.arms_key; $('cfg-indices').value = c.lr_xyz_indices.join(','); $('cfg-direction').value = c.lr_xyz_direction.join(','); $('config-status').textContent = '';
+        $('cfg-offset').value = (c.lr_xyz_offset || []).join(','); $('cfg-grip-offset').value = (c.lr_grip_offset || []).join(',');
     } catch (e) { $('config-status').textContent = e.message; }
 }
 async function saveProfileConfig() {
-    const name = $('profile').value, parse = id => $(id).value.split(',').map(v => Number(v.trim()));
+    const name = $('profile').value, parse = id => $(id).value.split(',').map(v => v.trim() ? Number(v.trim()) : NaN);
     const payload = { video_key: $('cfg-video').value.trim(), arms_key: $('cfg-arms').value.trim(), lr_xyz_indices: parse('cfg-indices'), lr_xyz_direction: parse('cfg-direction') };
+    payload.lr_xyz_offset = $('cfg-offset').value.trim() ? parse('cfg-offset') : [0,0,0,0,0,0];
+    payload.lr_grip_offset = $('cfg-grip-offset').value.trim() ? parse('cfg-grip-offset') : [0,0,0,0,0,0];
+    if ([payload.lr_xyz_offset, payload.lr_grip_offset].some(v => v.length !== 6 || v.some(x => !Number.isFinite(x)))) { $('config-status').textContent = '偏移必须是 6 个有限数字，或留空'; return; }
     try { if (name === '__custom__') { localStorage.setItem('ee-viewer-custom-config', JSON.stringify(payload)); $('config-box').close(); message('自定义配置已保存，请点击加载'); return; } const r = await fetch(`api/profile-config?${new URLSearchParams({ profile: name })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const result = await r.json(); if (!r.ok) throw new Error(result.detail || '配置保存失败'); $('config-box').close(); await initProfiles(); $('profile').value = name; message('配置已保存，请点击加载');
     } catch (e) { $('config-status').textContent = e.message; }
 }
@@ -82,7 +89,11 @@ async function loadEpisode() {
     if (!profile || !path || !Number.isInteger(episodeIndex) || episodeIndex < 0) { message('请选择类别、数据集目录和有效 Episode', true); return; }
     await viewer.load(async signal => {
         const query = { dataset_path: path, episode_index: String(episodeIndex), profile };
-        if (profile === '__custom__') query.config_json = localStorage.getItem('ee-viewer-custom-config') || '';
+        if (profile === '__custom__') {
+            const saved = JSON.parse(localStorage.getItem('ee-viewer-custom-config') || '{}');
+            // 仅发送当前支持的配置，旧浏览器缓存中的已删除字段不会阻断加载。
+            query.config_json = JSON.stringify(Object.fromEntries(['video_key', 'arms_key', 'lr_xyz_indices', 'lr_xyz_direction', 'lr_xyz_offset', 'lr_grip_offset'].filter(k => k in saved).map(k => [k, saved[k]])));
+        }
         const response = await fetch(`api/episode?${new URLSearchParams(query)}`, { signal });
         const data = await response.json();
         if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '加载失败，请检查文件路径');
@@ -96,7 +107,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('episode-index').addEventListener('keydown', e => { if (e.key === 'Enter') loadEpisode(); });
     try { $('path').value = localStorage.getItem('ee-viewer-dataset-path') || ''; $('episode-index').value = localStorage.getItem('ee-viewer-episode-index') || '0'; } catch {}
     try { await initProfiles(); } catch (error) { message(error.message, true); return; }
-    $('profile').addEventListener('change', () => { if ($('profile').value === '__custom__') { $('profile').dataset.customSource = $('profile').options[0]?.value || ''; toggleConfig(); } });
+    $('profile').dataset.customSource = $('profile').value;
+    $('profile').addEventListener('change', () => { const custom = $('profile').value === '__custom__'; $('edit-custom-config').hidden = !custom; if (custom) toggleConfig(); else $('profile').dataset.customSource = $('profile').value; });
     if ($('path').value) loadEpisode();
 });
     </script>

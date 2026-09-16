@@ -26,6 +26,8 @@ def main():
             "label": name, "exampleRoot": f"example/{matches[0].name if matches else name}",
             "videoKey": item["video_key"], "armsKey": item["arms_key"],
             "indices": item["lr_xyz_indices"], "direction": item["lr_xyz_direction"],
+            "offset": item.get("lr_xyz_offset", [0, 0, 0, 0, 0, 0]),
+            "gripOffset": item.get("lr_grip_offset", [0, 0, 0, 0, 0, 0]),
         }
     # 临时入口文件不进入仓库，输出 bundle 自带类别配置，不依赖 Python 服务。
     source = (ROOT / "public-src/viewer.js").read_text()

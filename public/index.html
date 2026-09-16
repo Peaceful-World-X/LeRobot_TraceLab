@@ -105,9 +105,12 @@
                 <label for="custom-arms-key">位置字段</label><input id="custom-arms-key" placeholder="observation.state_endpose_quat">
                 <label for="custom-indices">左右 XYZ 索引</label><input id="custom-indices" placeholder="0,1,2,8,9,10">
                 <label for="custom-direction">方向系数</label><input id="custom-direction" placeholder="-1,-1,1,-1,-1,1">
+                <label for="custom-offset">位置偏移<br>（可选，米）</label><input id="custom-offset" placeholder="留空为 0；左 XYZ、右 XYZ">
+                <label for="custom-grip-offset">夹爪局部偏移<br>（可选，米）</label><input id="custom-grip-offset" placeholder="留空显示原 EE；左 XYZ、右 XYZ">
                 <label for="custom-fps">采样频率 FPS</label><input id="custom-fps" type="number" min="0.001" step="any" placeholder="留空自动读取，例如 30" aria-describedby="custom-fps-help">
             </div>
             <p id="custom-fps-help">填写数据的实际采样频率（Hz），不是播放倍速。留空时优先读取目录元数据；单独导入则从 Parquet 时间戳推算。</p>
+            <p>位置偏移在方向变换后相加。夹爪局部偏移随末端姿态旋转，用于从腕部点换算到夹爪前端；姿态从位姿字段自动识别。两种偏移留空均为零。</p>
             <p id="custom-profile-error" role="alert" class="error"></p>
             <div class="manual-dialog-actions"><button type="button" onclick="document.getElementById('profile-dialog').close()">取消</button><button id="custom-profile-confirm" type="button">保存并使用</button></div>
         </form>

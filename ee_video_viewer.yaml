@@ -21,8 +21,10 @@ profiles:
   Ebench:
     video_key: video.overlook_camera_view
     arms_key: state.ee_pose
-    lr_xyz_indices: [7, 8, 9, 0, 1, 2]
-    lr_xyz_direction: [-1, -1, 1, -1, -1, 1]
+    lr_xyz_indices: [0, 1, 2, 7, 8, 9]
+    lr_xyz_direction: [1, 1, 1, 1, 1, 1]
+    lr_xyz_offset: [0, 0.24842, 0, 0, -0.24842, 0]
+    lr_grip_offset: [0.15757, 0, 0, 0.15757, 0, 0]
 
   Robocasa365:
     video_key: observation.images.robot0_agentview_right

@@ -1,3 +1,30 @@
+// 根据已应用类别映射的双臂轨迹确定屏幕左右，仅改变相机，不改变 XYZ。
+function trajectoryInitialCamera(data) {
+    const fallback = { eye: { x: 1.25, y: 1.25, z: .9 }, up: { x: 0, y: 0, z: 1 }, center: { x: 0, y: 0, z: 0 } };
+    if (data.single_arm || !data.left.length || data.left.length !== data.right.length) return fallback;
+    const delta = [0, 0, 0];
+    let widest = [0, 0, 0], widestLength = 0;
+    for (let i = 0; i < data.left.length; i++) {
+        const difference = data.right[i].map((v, axis) => v - data.left[i][axis]);
+        for (let axis = 0; axis < 3; axis++) delta[axis] += difference[axis] / data.left.length;
+        const length = Math.hypot(difference[0], difference[1]);
+        if (length > widestLength) { widestLength = length; widest = difference; }
+    }
+    // 轨迹中心几乎重合时，使用左右水平距离最明显的一帧消除朝向歧义。
+    const epsilon = Math.max(1e-9, widestLength * 1e-6);
+    let horizontal = Math.hypot(delta[0], delta[1]);
+    if (horizontal <= epsilon && widestLength > epsilon) {
+        delta.splice(0, 3, ...widest);
+        horizontal = widestLength;
+    }
+    if (horizontal <= epsilon) return fallback; // 单臂、重合或仅高度不同，没有可靠水平左右方向。
+    // 屏幕右方向为 up × eye，因此 eye=(dy,-dx,z) 将左→右方向投影到屏幕右侧。
+    return {
+        eye: { x: 1.8 * delta[1] / horizontal, y: -1.8 * delta[0] / horizontal, z: .9 },
+        up: { x: 0, y: 0, z: 1 }, center: { x: 0, y: 0, z: 0 },
+    };
+}
+
 // 服务器版与公开版共用的显示与交互；数据读取由各自入口提供。
 window.createTrajectoryViewer = function () {
 const $ = id => document.getElementById(id);
@@ -96,6 +123,7 @@ async function load(provider) {
 // 完整坐标和 hover 信息只计算一次，播放时复用。
 function prepare() {
     cache = {};
+    document.querySelector('.plot-toolbar > b').textContent = d.point_label || 'EE';
     const single = Boolean(d.single_arm);
     for (const id of ['right-x','right-y','right-z','right-v']) $(id).style.display = single ? 'none' : '';
     document.querySelectorAll('[data-arm="right"]').forEach(el => el.style.display = single ? 'none' : '');
@@ -137,13 +165,13 @@ function rememberCamera(event) {
 
 // 数据加载时初始化，重载只绑定一份相机和点选监听器。
 async function draw() {
-    const plot = $('plot'), camera = plot.layout?.scene?.camera;
+    const plot = $('plot'), camera = trajectoryInitialCamera(d);
     plot.removeAllListeners?.('plotly_click');
     plot.removeListener?.('plotly_relayouting', rememberCamera);
     plot.removeListener?.('plotly_relayout', rememberCamera);
     await Plotly.react(plot, Object.keys(ARMS).flatMap(traces), {
-        uirevision: 'ee-trajectory-camera', paper_bgcolor: '#fffaf5', font: { color: '#262421' }, margin: { l: 0, r: 0, t: 30, b: 0 },
-        scene: { aspectmode: 'data', ...(camera ? { camera } : {}), xaxis: { title: { text: 'X (m)' } }, yaxis: { title: { text: 'Y (m)' } }, zaxis: { title: { text: 'Z (m)' } } },
+        uirevision: `ee-trajectory-${generation}`, paper_bgcolor: '#fffaf5', font: { color: '#262421' }, margin: { l: 0, r: 0, t: 30, b: 0 },
+        scene: { aspectmode: 'data', camera, xaxis: { title: { text: 'X (m)' } }, yaxis: { title: { text: 'Y (m)' } }, zaxis: { title: { text: 'Z (m)' } } },
     }, { responsive: true, displaylogo: false });
     plot.on('plotly_click', clicked);
     // 拖动过程中也同步，播放与旋转同时发生时不会使用上一次松手的视角。
