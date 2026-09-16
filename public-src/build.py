@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]  # 与当前工作目录无关。
 def main():
     config = yaml.safe_load((ROOT / "ee_video_viewer.yaml").read_text())
     config = config["profiles"]
-    if not config or "H01" not in config:
-        raise ValueError("ee_video_viewer.yaml 必须包含 profiles.H01 作为公开版默认类别")
+    if not config:
+        raise ValueError("ee_video_viewer.yaml 必须包含非空 profiles；首个类别作为默认类别")
     profiles = {}
     for name, item in config.items():
         matches = [p for p in (ROOT / "public/example").iterdir() if p.is_dir() and p.name.casefold() == name.casefold()]

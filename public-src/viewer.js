@@ -13,7 +13,7 @@ let profile = PROFILES[DEFAULT_PROFILE]
 let previousProfileId = DEFAULT_PROFILE
 let directoryHandle = null
 let sourceMode = 'example' // 明确区分内置示例、用户目录和单独文件，避免旧文件选择覆盖新示例。
-let exampleRoot = PROFILES.H01.exampleRoot
+let exampleRoot = PROFILES[DEFAULT_PROFILE].exampleRoot
 
 // 显示当前示例路径；自定义类别沿用最近选择的示例数据集。
 function showExampleSource() {
@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return
     }
     previousProfileId = id
-    profile = PROFILES[id] || PROFILES.H01
+    profile = PROFILES[id] || PROFILES[DEFAULT_PROFILE]
     $('edit-custom-profile').hidden = true
     if (sourceMode === 'example') useExample()
   })

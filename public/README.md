@@ -8,10 +8,11 @@
 
 ## 使用
 
-首次打开自动展示 YAML 中的第一个类别（当前为 H01）的 episode 0。在示例模式下切换类别，会自动加载该类别的 episode 0。服务器版和公开版共用根目录 `ee_video_viewer.yaml`：服务器运行时直接读取，公开版执行 `python public-src/build.py` 时注入同一份配置，源码中不再维护第二份类别表。
+首次打开自动展示 YAML 中的第一个类别（当前为 H01_v1）的 episode 0。在示例模式下切换类别，会自动加载该类别的 episode 0。服务器版和公开版共用根目录 `ee_video_viewer.yaml`：服务器运行时直接读取，公开版执行 `python public-src/build.py` 时注入同一份配置，源码中不再维护第二份类别表。
 
 | 页面类别 | 仓库目录 | 当前示例 |
 | --- | --- | --- |
+| H01_v1（默认） | `public/example/H01_v1` | COL26071359B_rect11_link_base_tcp，episode 0，783 帧，30 Hz |
 | H01 | `public/example/H01` | episode 0，783 帧，30 Hz |
 | Ebench | `public/example/Ebench` | episode 0，3324 帧，15 Hz |
 | Robocasa365 | `public/example/RoboCasa365` | episode 0，1272 帧，20 Hz；注意目录大小写 |

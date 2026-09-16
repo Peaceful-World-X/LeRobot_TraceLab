@@ -1,11 +1,17 @@
 # 每个类别只配置视频键、位置键、左右 XYZ 索引和方向。
 profiles:
+  H01_v1:
+    video_key: observation.images.cam_fisheye_front
+    arms_key: observation.state_endpose_quat
+    lr_xyz_indices: [0, 1, 2, 8, 9, 10]
+    lr_xyz_direction: [1, 1, 1, 1, 1, 1]
+
   H01:
     video_key: observation.images.cam_fisheye_front
     arms_key: observation.state_endpose_quat
     lr_xyz_indices: [0, 1, 2, 8, 9, 10]
     lr_xyz_direction: [-1, -1, 1, -1, -1, 1]
-
+    
   RoboDojo:
     video_key: observation.images.cam_high
     arms_key: observation.state

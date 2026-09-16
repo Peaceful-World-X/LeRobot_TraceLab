@@ -21,6 +21,7 @@
 
 | 类别 | 位置字段 | 视频键 | 示例信息 |
 | --- | --- | --- | --- |
+| H01_v1（默认） | `observation.state_endpose_quat` | `observation.images.cam_fisheye_front` | 新版 Link_Base TCP，783 帧，30 Hz |
 | H01 | `observation.state_endpose_quat` | `observation.images.cam_fisheye_front` | 783 帧，30 Hz |
 | RoboDojo | `observation.state` | `observation.images.cam_high` | 579 帧，25 Hz |
 | Ebench | `state.ee_pose` | `video.overlook_camera_view` | 3324 帧，15 Hz |
