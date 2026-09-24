@@ -311,8 +311,23 @@ def read_source(root):
     require(math.isfinite(info["fps"]) and info["fps"] > 0, "Invalid FPS")
     tasks_path = local_file(root, "meta/tasks.parquet")
     tasks = pq.ParquetFile(tasks_path).read().to_pylist()
+    # Some v3 exports store the task string as the pandas index instead of a
+    # named ``task`` column. Normalize that known layout before v2.1 emission.
+    if tasks and all(
+        "task" not in row and isinstance(row.get("__index_level_0__"), str)
+        for row in tasks
+    ):
+        tasks = [
+            {"task_index": row.get("task_index"), "task": row["__index_level_0__"]}
+            for row in tasks
+        ]
     require(
-        all("task_index" in r and "task" in r for r in tasks),
+        all(
+            isinstance(r.get("task_index"), int)
+            and isinstance(r.get("task"), str)
+            and bool(r["task"])
+            for r in tasks
+        ),
         "Expected task_index/task in tasks.parquet",
     )
     require(
